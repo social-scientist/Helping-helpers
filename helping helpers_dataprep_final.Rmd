@@ -1,0 +1,1428 @@
+---
+title: "Data Preparation: Helping Helpers (https://doi.org/10.1332/239788221X16535005914874)"
+author: "Klara Raiber"
+date: "June 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Setup
+```{r}
+#working directory
+setwd("U:/P1")
+
+#set seed
+set.seed(2109)
+
+#check memory limit
+memory.limit()
+memory.limit(size = 6000000)
+```
+
+#Packages
+```{r}
+library(data.table)
+library(kableExtra)
+library(plyr)
+library(foreign)
+library(tidyr)
+library(haven)
+library(tidyverse)
+library(magrittr)
+library(dplyr)
+library(descr)
+library(Rmisc)
+library(plm)
+library(pglm)
+library(survival)
+library(reshape)
+```
+
+#Load original data set
+```{r}
+#read in
+mydata <- read_dta("PENDDAT.dta") # This study uses the anonymous data of Wave 14 of PASS. Data access was provided via a scientific use file supplied by the Research Data Centre (FDZ) of the German Federal Employment Agency (BA) at the Institute for Employment Research (IAB) (DOI: 10.5164/IAB.FDZD.2114.de.v1).
+
+#exclude wave 1 and 14
+data <- subset(mydata, mydata$welle > 1 & mydata$welle < 14)
+table(data$welle)
+
+#save sub-data
+save(data, file="data.dta")
+
+#load sub-data
+load("data.dta")
+```
+
+#Restrict sample 
+```{r}
+#by age
+data <- subset(data, data$palter >= 18 & data$palter <= 64) #select respondents from 18 on till 64
+
+#by work force
+#data$statakt
+#table(data$statakt)
+data <- subset(data, data$statakt != 3 & data$statakt != 4)
+
+
+#exclude respondents that have a change or missing in their sex
+#are there people that change sex?
+within_sex <- data.frame(tapply(data$zpsex, data$pnr, sd)) 
+table(within_sex, useNA = "always") #yes, some respondents have different sex
+
+#save those that change
+within_vars_sex <- subset(within_sex, within_sex$tapply.data.zpsex..data.pnr..sd.
+                          != "1" & within_sex$tapply.data.zpsex..data.pnr..sd. !=
+                            "0")
+
+#save Ids
+id_sexchange <- rownames(within_vars_sex)
+
+#exclude those that change by id
+data <- filter(data, !(pnr %in% id_sexchange))
+
+#check if worked
+within_sex <- data.frame(tapply(data$zpsex, data$pnr, sd))
+table(within_sex, useNA = "always") #yes, worked
+```
+
+#Care variables
+```{r}
+#look at data
+#table(data$PP0110) #caring=1
+#data$PP0110
+
+#hours caring
+#table(data$PP1100)
+#table(data$PP1100,data$PP0110) #we will loose some observations (N~367) when including the hours 
+
+#set missings
+data$care_b <- ifelse(data$PP0110 > -1, data$PP0110, NA) # caring=1 
+#check
+table(data$care_b, useNA = "always") # 80 missings
+
+# excluding caregivers with missing on hours caring
+data$ care_b <- ifelse((data$PP1100 <= 0 & data$care_b == 1), NA, data$care_b)
+
+#check
+table(data$care_b, useNA = "always") # 389 missings
+
+#check with hours caring
+#table(data$care_b, data$PP0110)
+
+#create caregiving dummies
+#non-caregiver
+data$non_caregiver <- as.factor(ifelse(data$care_b == 2, 1, 0))
+#check
+table(data$non_caregiver)
+
+#caregiver
+data$caregiver <- as.factor(ifelse(data$care_b == 1 & data$PP1100 >= 0 & data$PP1100 <= 7, 1, 0))
+#check
+table(data$caregiver)
+
+#intensive caregivers
+data$intense_care <- as.factor(ifelse(data$care_b == 1 &  data$PP1100 >= 8, 1, 0))
+#check
+table(data$intense_care)
+
+#cross-check
+#table(data$non_caregiver, data$caregiver)
+#table(data$non_caregiver, data$intense_care)
+#table(data$caregiver, data$intense_care)
+
+#categorical variable
+data$care <- data$care_b
+data$care[data$care_b == 2] <- "Non-caregiver"
+data$care[data$care_b == 1 & data$PP1100 >= 0 & data$PP1100 <= 7] <- "Non-intensive Caregiver"
+data$care[data$care_b == 1 &  data$PP1100 >= 8] <- "Intensive caregiver"
+
+#data$care <- factor(data$care, levels = c('Non-caregiver', 'Non-intensive Caregiver', 'Intensive caregiver'))
+table(data$care)
+
+
+#categorical variable with numbers instead of levels
+data$care_num <- data$care_b
+data$care_num[data$care_b == 2] <- 1 
+data$care_num[data$care_b == 1 & data$PP1100 >= 0 & data$PP1100 <= 7] <- 2
+data$care_num[data$care_b == 1 &  data$PP1100 >= 8] <- 3
+table(data$care_num)
+
+#continuous variable on care_intensity
+table(data$PP1100)
+data$care_intensity <- ifelse(data$PP1100 == 0, 1, data$PP1100)
+data$care_intensity <- ifelse(data$care_intensity > 0, data$PP1100, 0)
+table(data$care_intensity)
+```
+
+#Caregiving variable with 11 instead of 8 hours as cutpoint
+```{r}
+#caregiver
+data$caregiver_11 <- as.factor(ifelse(data$care_b == 1 & data$PP1100 >= 0 &
+                                        data$PP1100 <= 10, 1, 0))
+#check
+table(data$caregiver_11)
+
+#intensive caregivers
+data$intense_care_11 <- as.factor(ifelse(data$care_b == 1 &  data$PP1100 >= 11, 1,
+                                         0))
+#check
+```
+
+#moneytary transfers variables
+```{r}
+#look at original variable yes - no 
+#table(data$PP1150) #MTs=1, no MTs=2
+#table(data$PP1150, data$care_b)
+
+# number 
+#table(data$PP1160)
+
+#cross-table yes/no and the number of transfers
+#table(data$PP1150, data$PP1160)
+
+#exclude missings and non-caregivers 
+data$mt <- data$PP1160 #use number as basis
+data$mt[data$PP1160 < 0 ] <- NA #non-caregiver + missings
+data$mt[data$PP1150 == 2] <- 0 #without monetary transfers
+
+#check and look
+##table(data$mt)
+summary(data$mt) 
+
+#cross-table with care
+#table(data$mt, data$care_b)
+
+tapply(data$mt, data$care_b, summary)
+
+tapply(data$mt, data$PP1150 == 1, summary) #median for those that get transfers is 235 euros
+
+data$mt2 <- data$PP1160 #use number as basis
+
+data$mt2[data$PP1160 < 0 ] <-  -1 #non-caregiver + missings
+data$mt2[data$PP1150 == 2] <- 0 #without monetary transfers
+```
+
+#Care and monetary transfers combined variable
+```{r}
+## calculate median to divide into high and low monetary transfers
+#subset to people with monetary transfers 
+sub_data_med <- subset(data, data$mt > 0)
+
+#median per wave
+medians_wave <- aggregate(mt ~ welle, data=sub_data_med, median)
+
+#attach median to data-frame
+colnames(medians_wave)[2] <- "median_mt" #rename to median_mt
+data <- merge(data, medians_wave, by =  "welle") 
+
+table(data$median_mt)
+
+#non-caregiver --> defined before
+
+#caregiver without monetary transfers
+data$carenomt <- as.factor(ifelse((data$caregiver == 1 | data$intense_care == 1) &
+                                    data$mt == 0, 1, 0))
+data$carenomt[data$care_b == 1 & is.na(data$mt)] <- NA
+#check
+table(data$carenomt)
+
+#caregiver with low monetary transfers
+data$lowmt <- as.factor(ifelse((data$caregiver == 1 | data$intense_care == 1) &
+                                 data$mt > 0 & data$mt <= data$median_mt, 1, 0)) 
+data$lowmt[data$care_b == 1 & is.na(data$mt)] <- NA
+table(data$lowmt)
+
+#caregiver with high monetary transfers
+data$highmt <- as.factor(ifelse((data$caregiver == 1 | data$intense_care == 1) &
+                                  data$mt > data$median_mt, 1, 0))
+data$highmt[data$care_b == 1 & is.na(data$mt)] <- NA
+table(data$highmt)
+
+#cross-table to check
+#table(data$non_caregiver, data$highmt)
+#table(data$non_caregiver, data$lowmt)
+#table(data$non_caregiver, data$carenomt)
+
+#check
+table(data$median_mt)
+
+#in one variable
+data$mt_care <- is.numeric(data$non_caregiver)
+data$mt_care[data$non_caregiver == 1] <- "Non-caregiver"
+data$mt_care[(data$caregiver == 1 | data$intense_care == 1) & data$mt == 0] <-
+  "Caregiver without mt"
+data$mt_care[(data$caregiver == 1 | data$intense_care == 1) & data$mt > 0 & 
+               data$mt <= data$median_mt] <- "Caregiver with low mt"
+data$mt_care[(data$caregiver == 1 | data$intense_care == 1) & data$mt >
+               data$median_mt] <- "Caregiver with high mt"
+data$mt_care[data$care_b == 1 & is.na(data$mt)] <- NA
+table(data$mt_care)
+```
+
+#Working hours in contract (azges1: Akt. vertragl. Arb.zeit insgesamt (ohne Minijobs), gen.)
+```{r}
+#look at the original variable
+#data$azges1
+#table(data$azges1) 
+
+#recoding
+data$con_wo_ho <- ifelse(data$azges1 >= 0, data$azges1, NA) ##set missing
+data$con_wo_ho <- ifelse(data$con_wo_ho <= 60, data$con_wo_ho, 60) #topcoding at 60
+
+#check an look
+table(data$con_wo_ho)
+```
+
+#Actual working hours (azges2: Akt. tats?chl. Arb.zeit insgesamt (ohne Minijobs, inkl. kat. Ang.), gen.)
+```{r}
+## have a look at the predefined variable
+#table(data$azges2)
+#data$azges2
+
+#recoding
+data$ac_wo_ho <- ifelse(data$azges2 >= 0, data$azges2, NA)
+data$ac_wo_ho <- ifelse(data$ac_wo_ho <= 90, data$ac_wo_ho, 90) #topcoding at 90
+
+#check an look
+# table(data$ac_wo_ho)
+```
+
+## binary employment status (etakt: Aktuell erwerbst?tig (>400 Euro pro Monat), generiert (ab Welle 2))
+```{r}
+#have a look at the original variable
+#data$etakt # 1 is working, #2  not working 
+table(data$etakt, data$statakt)
+
+#set missings
+data$etakt_2 <- ifelse(data$etakt >= 0, data$etakt, NA)
+#recode
+data$work_bi <- ifelse(data$etakt_2 == 1, 1, 0) # 1 working, 0 not working
+
+#check and look
+table(data$work_bi)
+```
+
+#Age (zpalthh)
+```{r}
+#look at original variable
+#data$zpalthh #-2 is no answer
+table(data$zpalthh) 
+
+#new name and -2 to NA
+data$age <- data$zpalthh
+
+#squared age
+data$age_sq <- (data$age)^2
+```
+
+#Children variable
+```{r}
+#read in household data
+hdata <- read_dta("HHENDDAT.dta") 
+#merge
+data <- merge(data,hdata,by=c("hnr","welle"))
+
+#look at the original variables
+#kid under 4
+#data$kindu4 #0 = no kid under 4, 1 = kid under 4 in the household
+table(data$kindu4) # no missings
+table(data$kindu15) # no missings
+
+#youngest children dummies
+#youngest under 4
+data$childu4 <- as.factor(ifelse(data$kindu4==1, 1, 0))
+#check 
+table(data$childu4)
+#youngest under 15
+data$childu15 <- as.factor(ifelse((data$childu4 == 0 & data$kindu15 == 1), 1, 0))
+#check
+table(data$childu15)
+#no children under 15
+data$nochild <- as.factor(ifelse((data$childu4==0 & data$childu15 == 0), 1, 0))
+#check
+table(data$nochild)
+table(data$nochild, data$childu4)
+table(data$nochild, data$childu15)
+table(data$childu4, data$childu15)
+```
+
+#Partner variable
+```{r}
+#check original variables
+#Feste/r Lebenspartner/in ausserhalb des Haushalts? (partner outside of household)
+#data$PD0600 #1 = yes, -2 and -8 real missings
+table(data$PD0600)
+
+#Ehepartner oder eingetr. Lebenspartner im HH (married)
+#data$epartner #1= yes
+#table(data$epartner) #no missings
+
+#Unverh. Partner im HH (unmarried partner in householde)
+#data$apartner # 1=yes
+table(data$apartner) # 6 missings: Item fuer Fragebogenversion nicht relevant
+
+#built partner dummies
+#dummy missing:
+data$partner_missing <- as.factor(ifelse(data$PD0600 == -2 | data$PD0600 == -8 |
+                                           data$apartner == -6, 1, 0))
+table(data$partner_missing)
+
+#dummy: partner outside of the household
+data$partneroutside <- as.factor(ifelse(data$PD0600 == 1 & data$partner_missing ==
+                                          0, 1, 0)) #partner outside of the household
+#check
+table(data$partneroutside)
+
+#dummy partner inside of the household
+data$partnerihh <- as.factor(ifelse((data$apartner == 1 | data$epartner == 1) &
+                                      data$partner_missing == 0 , 1, 0))
+#check
+table(data$partnerihh) 
+
+#cross-table to check
+#table(data$partneroutside, data$partnerihh)
+
+#dummy: single (no partner in or outside the HH)
+data$single <- as.factor(ifelse(data$partnerihh == 0 & data$partneroutside == 0 &
+                                  data$partner_missing == 0, 1, 0))
+#check
+table(data$single)
+
+#cross-table to check
+#table(data$single, data$partnerihh)
+#table(data$partneroutside, data$single)
+#table(data$single, data$partner_missing)
+#table(data$partneroutside, data$PD0600)
+```
+
+#Sex (zpsex)
+```{r}
+#have a look at the original variable
+#data$zpsex #-2 = no answer, -1 = don't know, 1 = man, 2 = women
+table(data$zpsex)
+
+#exclude missings and recode
+data$sex[data$zpsex == -1 | data$zpsex == -2] <- NA 
+data$sex[data$zpsex == 1] <- 0 # men
+data$sex[data$zpsex == 2] <- 1 # women
+
+#check and look
+table(data$sex)
+```
+
+# Id
+```{r}
+#look at id variable delivered
+#data$pnr
+#table(data$pnr)
+
+#new variable
+data$id <- as.factor(data$pnr)
+
+#check
+#table(data$id)
+```
+
+#wave indicator
+```{r}
+#data$welle 
+#Welle 1 (2006/2007)
+#Welle 2 (2007/2008)
+#Welle 3 (2008/2009)
+#Welle 4 (2010)
+#Welle 5 (2011)
+#Welle 6 (2012)
+#Welle 7 (2013)
+#Welle 8 (2014)
+#Welle 9 (2015)
+#Welle 10 (2016)
+#Welle 11 (2017)
+#Welle 12 (2018)
+#table(data$welle)
+
+#new variable
+data$wave <- data$welle
+
+#check
+table(data$wave)
+
+#wave years
+data$wave_years <- as.numeric(revalue(as.character(data$wave), c("2" = "2007.5",
+                                                                 "3" = "2008.5",
+                                                                 "4" = "2010", "5"
+                                                                 = "2011", "6" =
+                                                                   "2012", "7" =
+                                                                   "2013", "8" =
+                                                                   "2014", "9" =
+                                                                   "2015", "10" =
+                                                                   "2016", "11" =
+                                                                   "2017", "12" =
+                                                                   "2018", "13" = 
+                                                                   "2019")))
+
+table(data$wave_years)
+```
+
+#ses variable
+```{r}
+#data$eseclewt #    1   Hoeh. Profes., Manag./Inh. v. Grossbetr.
+#2  Semi-Prof.; geh. Verw./Manag.; hoe. tech.
+# 3   Qual. Buero-, Dienstl.- & Handelsberufe
+#  4   Inh. v. Kleinbet., Selbst. (o. Landw.)
+#   5   Selbststaendige in der Landwirtschaft
+#    6        Vorarbeiter; Meister, Techniker
+#     7 Einf. Buero-, Dienstl.- & Handelsber.
+#      8                         Facharbeiter
+#       9         Un- und angelernte Arbeiter
+table(data$eseclewt)
+
+#Dummy: ses low
+data$ses_low <- ifelse(data$eseclewt == 9 | data$eseclewt == 8 | data$eseclewt ==
+                         7, 1, 0)
+table(data$ses_low)
+#Dummy: ses middle
+data$ses_middle <- ifelse(data$eseclewt == 4 | data$eseclewt == 5 | data$eseclewt
+                          == 6 | data$eseclewt == 7, 1, 0)
+table(data$ses_middle)
+#Dummy: ses high
+data$ses_high <- ifelse(data$eseclewt == 1 | data$eseclewt == 2, 1, 0)
+table(data$ses_high)
+#Dummy: ses missing
+data$ses_missing <- ifelse(data$eseclewt <= -1, 1, 0)
+table(data$ses_missing)
+
+#save in-between
+save(data, file="data_new")
+```
+
+
+
+#Subsetting before reshaping/calculating changes
+```{r}
+load("data_new")
+data.long <- subset(data, select = c(id, wave, non_caregiver, work_bi, carenomt,
+                                     lowmt, highmt, caregiver, intense_care, sex,
+                                     age, age_sq,partneroutside, partnerihh,
+                                     single, partner_missing,  nochild, childu4,
+                                     childu15, care_intensity, con_wo_ho, care, mt_care, hhincome,
+                                     care_b, caregiver_11, intense_care_11,
+                                     wave_years, ses_low, ses_middle, ses_high,
+                                     ses_missing, care_num, mt2, ac_wo_ho))
+
+data.long <- pdata.frame(data.long, index = c("id", "wave"))
+
+```
+
+#relative MTs
+```{r}
+#Reshaping form long to wide
+data.wide <- data.long  %>% gather (key = variable, value = values,
+                                    non_caregiver:ac_wo_ho, -id, -wave)
+data.wide <- data.wide %>% unite(variable.wave, variable, wave, sep = ".")
+data.wide <- data.wide %>% spread(key = variable.wave, value = values)
+
+table(data.wide$hhincome.2)
+
+is.na(data.wide$hhincome.2)
+
+#one variable with the hhincome from first observed wave
+# if wave 2 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$hhincome.2 <= 0 | is.na(data.wide$hhincome.2), NA, data.wide$hhincome.2))
+
+# if wave 3 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.3, data.wide$sethhincome))
+
+# if wave 4 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.4, data.wide$sethhincome))
+
+# if wave 5 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.5, data.wide$sethhincome))
+
+# if wave 6 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.6, data.wide$sethhincome))
+
+# if wave 7 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.7, data.wide$sethhincome))
+
+# if wave 8 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.8, data.wide$sethhincome))
+
+# if wave 9 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.9, data.wide$sethhincome))
+
+# if wave 10 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.10, data.wide$sethhincome))
+
+# if wave 11 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.11, data.wide$sethhincome))
+
+# if wave 12 was first including information on hhincome
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.12, data.wide$sethhincome))
+
+# UNREALISTIC BUT TO BE COMPLETE ALSO ADD wave 13
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), data.wide$hhincome.13, data.wide$sethhincome))
+
+#missings
+data.wide$sethhincome <- as.numeric(ifelse(data.wide$sethhincome <= 0 | is.na(data.wide$sethhincome), NA, data.wide$sethhincome ))
+
+#check
+table(data.wide$sethhincome)
+is.na(data.wide$sethhincome)
+summary(data.wide$sethhincome)
+
+#if no hhincome? mean hhincome for educatinal group? ingnore because robustness?
+
+#wave 2
+table(data.wide$mt2.2)
+#how many missings on mt2
+data.wide$mt2.2 <- as.numeric(data.wide$mt2.2)
+summary(data.wide$mt2.2) #data.wide$mt2.2
+
+#caculate relative meassure into percentages of hhincome
+data.wide$rel_mt.2 <- as.numeric(as.numeric(data.wide$mt2.2) / as.numeric(data.wide$sethhincome) * 100)
+summary(data.wide$rel_mt.2) # 23279 missings, sligtly more
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.2 <- as.numeric(ifelse(data.wide$rel_mt.2 <= 0, NA, data.wide$rel_mt.2))
+
+table(data.wide$rel_mt.2)                                                           
+
+#wave 3
+data.wide$rel_mt.3 <- as.numeric(as.numeric(data.wide$mt2.3) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.3 <- as.numeric(ifelse(data.wide$rel_mt.3 <= 0, NA, data.wide$rel_mt.3))
+
+#wave 4
+data.wide$rel_mt.4 <- as.numeric(as.numeric(data.wide$mt2.4) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.4 <- as.numeric(ifelse(data.wide$rel_mt.4 <= 0, NA, data.wide$rel_mt.4))
+
+#wave 5
+data.wide$rel_mt.5 <- as.numeric(as.numeric(data.wide$mt2.5) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.5 <- as.numeric(ifelse(data.wide$rel_mt.5 <= 0, NA, data.wide$rel_mt.5))
+
+#wave 6
+data.wide$rel_mt.6 <- as.numeric(as.numeric(data.wide$mt2.6) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.6 <- as.numeric(ifelse(data.wide$rel_mt.6 <= 0, NA, data.wide$rel_mt.6))
+
+#wave 7
+data.wide$rel_mt.7 <- as.numeric(as.numeric(data.wide$mt2.7) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.7 <- as.numeric(ifelse(data.wide$rel_mt.7 <= 0, NA, data.wide$rel_mt.7))
+
+#wave 8
+data.wide$rel_mt.8 <- as.numeric(as.numeric(data.wide$mt2.8) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.8 <- as.numeric(ifelse(data.wide$rel_mt.8 <= 0, NA, data.wide$rel_mt.8))
+
+#wave 9
+data.wide$rel_mt.9 <- as.numeric(as.numeric(data.wide$mt2.9) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.9 <- as.numeric(ifelse(data.wide$rel_mt.9 <= 0, NA, data.wide$rel_mt.9))
+
+#wave 10
+data.wide$rel_mt.10 <- as.numeric(as.numeric(data.wide$mt2.10) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.10 <- as.numeric(ifelse(data.wide$rel_mt.10 <= 0, NA, data.wide$rel_mt.10))
+
+#wave 11
+data.wide$rel_mt.11 <- as.numeric(as.numeric(data.wide$mt2.11) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.11 <- as.numeric(ifelse(data.wide$rel_mt.11 <= 0, NA, data.wide$rel_mt.11))
+
+#wave 12
+data.wide$rel_mt.12 <- as.numeric(as.numeric(data.wide$mt2.12) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.12 <- as.numeric(ifelse(data.wide$rel_mt.12 <= 0, NA, data.wide$rel_mt.12))
+
+#wave 13
+data.wide$rel_mt.13 <- as.numeric(as.numeric(data.wide$mt2.13) / as.numeric(data.wide$sethhincome) * 100)
+
+#set people without MTs to orignial variable 0 = no MTs, -1 = non-care
+data.wide$rel_mt.13 <- as.numeric(ifelse(data.wide$rel_mt.13 <= 0, NA, data.wide$rel_mt.13))
+
+
+```
+
+
+
+#Calculating excact changes
+```{r}
+
+#Creating exact changes in caregiving
+#care to intense
+data.wide$care_to_intense.2 <- 0
+data.wide$care_to_intense.3 <- ifelse(data.wide$caregiver.2 ==1 & data.wide$intense_care.3 == 1,
+                                      1, 0)
+data.wide$care_to_intense.4 <- ifelse((data.wide$caregiver.3 ==1 &
+                                         data.wide$intense_care.4 == 1) 
+                                      | data.wide$care_to_intense.3 == 1, 1, 0)
+data.wide$care_to_intense.5 <- ifelse((data.wide$caregiver.4==1 &
+                                         data.wide$intense_care.5 == 1)
+                                      | data.wide$care_to_intense.4 == 1, 1, 0)
+data.wide$care_to_intense.6 <- ifelse((data.wide$caregiver.5==1 &
+                                         data.wide$intense_care.6 == 1)
+                                      | data.wide$care_to_intense.5 == 1, 1, 0)
+data.wide$care_to_intense.7 <- ifelse((data.wide$caregiver.6==1 &
+                                         data.wide$intense_care.7 == 1)
+                                      | data.wide$care_to_intense.6 == 1, 1, 0)
+data.wide$care_to_intense.8 <- ifelse((data.wide$caregiver.7==1 &
+                                         data.wide$intense_care.8 == 1)
+                                      | data.wide$care_to_intense.7 == 1, 1, 0)
+data.wide$care_to_intense.9 <- ifelse((data.wide$caregiver.8==1 &
+                                         data.wide$intense_care.9 == 1)
+                                      | data.wide$care_to_intense.8 == 1, 1, 0)
+data.wide$care_to_intense.10 <- ifelse((data.wide$caregiver.9==1 &
+                                          data.wide$intense_care.10 == 1)
+                                       | data.wide$care_to_intense.9 == 1, 1, 0)
+data.wide$care_to_intense.11 <- ifelse((data.wide$caregiver.10==1 &
+                                          data.wide$intense_care.11 == 1)
+                                       | data.wide$care_to_intense.10 == 1, 1,
+                                       0)
+data.wide$care_to_intense.12 <- ifelse((data.wide$caregiver.11==1 &
+                                          data.wide$intense_care.12 == 1)
+                                       | data.wide$care_to_intense.11 == 1, 1, 0)
+data.wide$care_to_intense.13 <- ifelse((data.wide$caregiver.12==1 &
+                                          data.wide$intense_care.13 == 1)
+                                       | data.wide$care_to_intense.12 == 1, 1, 0)
+
+#non to intense
+data.wide$non_to_intense.2 <- 0
+table(data.wide$intense_care.3, data.wide$non_caregiver.2, useNA = "always") #no overlap
+data.wide$non_to_intense.3 <- ifelse(data.wide$non_caregiver.2 ==1 &
+                                       data.wide$intense_care.3 == 1,
+                                     1, 0)
+data.wide$non_to_intense.4 <- ifelse((data.wide$non_caregiver.3 ==1 &
+                                        data.wide$intense_care.4 == 1) 
+                                     | data.wide$non_to_intense.3 == 1, 1, 0)
+data.wide$non_to_intense.5 <- ifelse((data.wide$non_caregiver.4==1 &
+                                        data.wide$intense_care.5 == 1)
+                                     | data.wide$non_to_intense.4 == 1, 1, 0)
+data.wide$non_to_intense.6 <- ifelse((data.wide$non_caregiver.5==1 &
+                                        data.wide$intense_care.6 == 1)
+                                     | data.wide$non_to_intense.5 == 1, 1, 0)
+data.wide$non_to_intense.7 <- ifelse((data.wide$non_caregiver.6==1 &
+                                        data.wide$intense_care.7 == 1)
+                                     | data.wide$non_to_intense.6 == 1, 1, 0)
+data.wide$non_to_intense.8 <- ifelse((data.wide$non_caregiver.7==1 &
+                                        data.wide$intense_care.8 == 1)
+                                     | data.wide$non_to_intense.7 == 1, 1, 0)
+data.wide$non_to_intense.9 <- ifelse((data.wide$non_caregiver.8==1 &
+                                        data.wide$intense_care.9 == 1)
+                                     | data.wide$non_to_intense.8 == 1, 1, 0)
+data.wide$non_to_intense.10 <- ifelse((data.wide$non_caregiver.9==1 &
+                                         data.wide$intense_care.10 == 1)
+                                      | data.wide$non_to_intense.9 == 1, 1, 0)
+data.wide$non_to_intense.11 <- ifelse((data.wide$non_caregiver.10==1 &
+                                         data.wide$intense_care.11 == 1)
+                                      | data.wide$non_to_intense.10 == 1, 1, 0)
+data.wide$non_to_intense.12 <- ifelse((data.wide$non_caregiver.11==1 &
+                                         data.wide$intense_care.12 == 1)
+                                      | data.wide$non_to_intense.11 == 1, 1, 0)
+data.wide$non_to_intense.13 <- ifelse((data.wide$non_caregiver.12==1 &
+                                         data.wide$intense_care.13 == 1)
+                                      | data.wide$non_to_intense.12 == 1, 1, 0)
+#no care to care
+data.wide$non_to_care.2 <- 0
+data.wide$non_to_care.3 <- ifelse(data.wide$non_caregiver.2 ==1 &
+                                    data.wide$caregiver.3 == 1,1, 0)
+data.wide$non_to_care.4 <- ifelse((data.wide$non_caregiver.3 ==1 &
+                                     data.wide$caregiver.4 == 1) 
+                                  | data.wide$non_to_care.3 == 1, 1, 0)
+data.wide$non_to_care.5 <- ifelse((data.wide$non_caregiver.4==1 &
+                                     data.wide$caregiver.5 == 1)
+                                  | data.wide$non_to_care.4 == 1, 1, 0)
+data.wide$non_to_care.6 <- ifelse((data.wide$non_caregiver.5==1 &
+                                     data.wide$caregiver.6 == 1)
+                                  | data.wide$non_to_care.5 == 1, 1, 0)
+data.wide$non_to_care.7 <- ifelse((data.wide$non_caregiver.6==1 &
+                                     data.wide$caregiver.7 == 1)
+                                  | data.wide$non_to_care.6 == 1, 1, 0)
+data.wide$non_to_care.8 <- ifelse((data.wide$non_caregiver.7==1 &
+                                     data.wide$caregiver.8 == 1)
+                                  | data.wide$non_to_care.7 == 1, 1, 0)
+data.wide$non_to_care.9 <- ifelse((data.wide$non_caregiver.8==1 &
+                                     data.wide$caregiver.9 == 1)
+                                  | data.wide$non_to_care.8 == 1, 1, 0)
+data.wide$non_to_care.10 <- ifelse((data.wide$non_caregiver.9==1 &
+                                      data.wide$caregiver.10 == 1)
+                                   | data.wide$non_to_care.9 == 1, 1, 0)
+data.wide$non_to_care.11 <- ifelse((data.wide$non_caregiver.10==1 &
+                                      data.wide$caregiver.11 == 1)
+                                   | data.wide$non_to_care.10 == 1, 1, 0)
+data.wide$non_to_care.12 <- ifelse((data.wide$non_caregiver.11==1 &
+                                      data.wide$caregiver.12 == 1)
+                                   | data.wide$non_to_care.11 == 1, 1, 0)
+data.wide$non_to_care.13 <- ifelse((data.wide$non_caregiver.12==1 &
+                                      data.wide$caregiver.13 == 1)
+                                   | data.wide$non_to_care.12 == 1, 1, 0)
+
+# intense care to care
+data.wide$intense_to_care.2 <- 0
+data.wide$intense_to_care.3 <- ifelse(data.wide$intense_care.2 ==1 &
+                                        data.wide$caregiver.3 == 1, 1, 0)
+data.wide$intense_to_care.4 <- ifelse((data.wide$intense_care.3 ==1 &
+                                         data.wide$caregiver.4 == 1) 
+                                      | data.wide$intense_to_care.3 == 1, 1, 0)
+data.wide$intense_to_care.5 <- ifelse((data.wide$intense_care.4==1 &
+                                         data.wide$caregiver.5 == 1)
+                                      | data.wide$intense_to_care.4 == 1, 1, 0)
+data.wide$intense_to_care.6 <- ifelse((data.wide$intense_care.5==1 &
+                                         data.wide$caregiver.6 == 1)
+                                      | data.wide$intense_to_care.5 == 1, 1, 0)
+data.wide$intense_to_care.7 <- ifelse((data.wide$intense_care.6==1 &
+                                         data.wide$caregiver.7 == 1)
+                                      | data.wide$intense_to_care.6 == 1, 1, 0)
+data.wide$intense_to_care.8 <- ifelse((data.wide$intense_care.7==1 &
+                                         data.wide$caregiver.8 == 1)
+                                      | data.wide$intense_to_care.7 == 1, 1, 0)
+data.wide$intense_to_care.9 <- ifelse((data.wide$intense_care.8==1 &
+                                         data.wide$caregiver.9 == 1)
+                                      | data.wide$intense_to_care.8 == 1, 1, 0)
+data.wide$intense_to_care.10 <- ifelse((data.wide$intense_care.9==1 &
+                                          data.wide$caregiver.10 == 1)
+                                       | data.wide$intense_to_care.9 == 1, 1, 0)
+data.wide$intense_to_care.11 <- ifelse((data.wide$intense_care.10==1 &
+                                          data.wide$caregiver.11 == 1)
+                                       | data.wide$intense_to_care.10 == 1, 1,
+                                       0)
+data.wide$intense_to_care.12 <- ifelse((data.wide$intense_care.11==1 &
+                                          data.wide$caregiver.12 == 1)
+                                       | data.wide$intense_to_care.11 == 1, 1, 0)
+data.wide$intense_to_care.13 <- ifelse((data.wide$intense_care.12==1 &
+                                          data.wide$caregiver.13 == 1)
+                                       | data.wide$intense_to_care.12 == 1, 1, 0)
+
+#from intense to non-care
+data.wide$intense_to_non.2 <- 0
+data.wide$intense_to_non.3 <- ifelse(data.wide$intense_care.2 ==1 & data.wide$non_caregiver.3 == 1,
+                                     1, 0)
+data.wide$intense_to_non.4 <- ifelse((data.wide$intense_care.3 ==1 &
+                                        data.wide$non_caregiver.4 == 1) 
+                                     | data.wide$intense_to_non.3 == 1, 1, 0)
+data.wide$intense_to_non.5 <- ifelse((data.wide$intense_care.4==1 &
+                                        data.wide$non_caregiver.5 == 1)
+                                     | data.wide$intense_to_non.4 == 1, 1, 0)
+data.wide$intense_to_non.6 <- ifelse((data.wide$intense_care.5==1 &
+                                        data.wide$non_caregiver.6 == 1)
+                                     | data.wide$intense_to_non.5 == 1, 1, 0)
+data.wide$intense_to_non.7 <- ifelse((data.wide$intense_care.6==1 &
+                                        data.wide$non_caregiver.7 == 1)
+                                     | data.wide$intense_to_non.6 == 1, 1, 0)
+data.wide$intense_to_non.8 <- ifelse((data.wide$intense_care.7==1 &
+                                        data.wide$non_caregiver.8 == 1)
+                                     | data.wide$intense_to_non.7 == 1, 1, 0)
+data.wide$intense_to_non.9 <- ifelse((data.wide$intense_care.8==1 &
+                                        data.wide$non_caregiver.9 == 1)
+                                     | data.wide$intense_to_non.8 == 1, 1, 0)
+data.wide$intense_to_non.10 <- ifelse((data.wide$intense_care.9==1 &
+                                         data.wide$non_caregiver.10 == 1)
+                                      | data.wide$intense_to_non.9 == 1, 1, 0)
+data.wide$intense_to_non.11 <- ifelse((data.wide$intense_care.10==1 &
+                                         data.wide$non_caregiver.11 == 1)
+                                      | data.wide$intense_to_non.10 == 1, 1, 0)
+data.wide$intense_to_non.12 <- ifelse((data.wide$intense_care.11==1 &
+                                         data.wide$non_caregiver.12 == 1)
+                                      | data.wide$intense_to_non.11 == 1, 1, 0)
+data.wide$intense_to_non.13 <- ifelse((data.wide$intense_care.12==1 &
+                                         data.wide$non_caregiver.13 == 1)
+                                      | data.wide$intense_to_non.12 == 1, 1, 0)
+
+#from care to non
+data.wide$care_to_non.2 <- 0
+data.wide$care_to_non.3 <- ifelse(data.wide$caregiver.2 ==1 & data.wide$non_caregiver.3 == 1,
+                                  1, 0)
+data.wide$care_to_non.4 <- ifelse((data.wide$caregiver.3 ==1 &
+                                     data.wide$non_caregiver.4 == 1) 
+                                  | data.wide$care_to_non.3 == 1, 1, 0)
+data.wide$care_to_non.5 <- ifelse((data.wide$caregiver.4==1 &
+                                     data.wide$non_caregiver.5 == 1)
+                                  | data.wide$care_to_non.4 == 1, 1, 0)
+data.wide$care_to_non.6 <- ifelse((data.wide$caregiver.5==1 &
+                                     data.wide$non_caregiver.6 == 1)
+                                  | data.wide$care_to_non.5 == 1, 1, 0)
+data.wide$care_to_non.7 <- ifelse((data.wide$caregiver.6==1 &
+                                     data.wide$non_caregiver.7 == 1)
+                                  | data.wide$care_to_non.6 == 1, 1, 0)
+data.wide$care_to_non.8 <- ifelse((data.wide$caregiver.7==1 &
+                                     data.wide$non_caregiver.8 == 1)
+                                  | data.wide$care_to_non.7 == 1, 1, 0)
+data.wide$care_to_non.9 <- ifelse((data.wide$caregiver.8==1 &
+                                     data.wide$non_caregiver.9 == 1)
+                                  | data.wide$care_to_non.8 == 1, 1, 0)
+data.wide$care_to_non.10 <- ifelse((data.wide$caregiver.9==1 &
+                                      data.wide$non_caregiver.10 == 1)
+                                   | data.wide$care_to_non.9 == 1, 1, 0)
+data.wide$care_to_non.11 <- ifelse((data.wide$caregiver.10==1 &
+                                      data.wide$non_caregiver.11 == 1)
+                                   | data.wide$care_to_non.10 == 1, 1, 0)
+data.wide$care_to_non.12 <- ifelse((data.wide$caregiver.11==1 &
+                                      data.wide$non_caregiver.12 == 1)
+                                   | data.wide$care_to_non.11 == 1, 1, 0)
+data.wide$care_to_non.13 <- ifelse((data.wide$caregiver.12==1 &
+                                      data.wide$non_caregiver.13 == 1)
+                                   | data.wide$care_to_non.12 == 1, 1, 0)
+
+#creating exact changes in monetary transfers
+#non to high monetary transfers
+data.wide$non_to_high.2 <- 0
+data.wide$non_to_high.3 <- ifelse(data.wide$non_caregiver.2 ==1 &
+                                    data.wide$highmt.3 == 1,
+                                  1, 0)
+data.wide$non_to_high.4 <- ifelse((data.wide$non_caregiver.3 ==1 &
+                                     data.wide$highmt.4 == 1) 
+                                  | data.wide$non_to_high.3 == 1, 1, 0)
+data.wide$non_to_high.5 <- ifelse((data.wide$non_caregiver.4==1 &
+                                     data.wide$highmt.5 == 1)
+                                  | data.wide$non_to_high.4 == 1, 1, 0)
+data.wide$non_to_high.6 <- ifelse((data.wide$non_caregiver.5==1 &
+                                     data.wide$highmt.6 == 1)
+                                  | data.wide$non_to_high.5 == 1, 1, 0)
+data.wide$non_to_high.7 <- ifelse((data.wide$non_caregiver.6==1 &
+                                     data.wide$highmt.7 == 1)
+                                  | data.wide$non_to_high.6 == 1, 1, 0)
+data.wide$non_to_high.8 <- ifelse((data.wide$non_caregiver.7==1 &
+                                     data.wide$highmt.8 == 1)
+                                  | data.wide$non_to_high.7 == 1, 1, 0)
+data.wide$non_to_high.9 <- ifelse((data.wide$non_caregiver.8==1 &
+                                     data.wide$highmt.9 == 1)
+                                  | data.wide$non_to_high.8 == 1, 1, 0)
+data.wide$non_to_high.10 <- ifelse((data.wide$non_caregiver.9==1 &
+                                      data.wide$highmt.10 == 1)
+                                   | data.wide$non_to_high.9 == 1, 1, 0)
+data.wide$non_to_high.11 <- ifelse((data.wide$non_caregiver.10==1 &
+                                      data.wide$highmt.11 == 1)
+                                   | data.wide$non_to_high.10 == 1, 1, 0)
+data.wide$non_to_high.12 <- ifelse((data.wide$non_caregiver.11==1 &
+                                      data.wide$highmt.12 == 1)
+                                   | data.wide$non_to_high.11 == 1, 1, 0)
+data.wide$non_to_high.13 <- ifelse((data.wide$non_caregiver.12==1 &
+                                      data.wide$highmt.13 == 1)
+                                   | data.wide$non_to_high.12 == 1, 1, 0)
+
+#non to low monetary transfers
+data.wide$non_to_low.2 <- 0
+data.wide$non_to_low.3 <- ifelse(data.wide$non_caregiver.2 ==1 & data.wide$lowmt.3
+                                 == 1,1, 0)
+data.wide$non_to_low.4 <- ifelse((data.wide$non_caregiver.3 ==1 & data.wide$lowmt.4
+                                  == 1) | data.wide$non_to_low.3 == 1, 1, 0)
+data.wide$non_to_low.5 <- ifelse((data.wide$non_caregiver.4==1 & data.wide$lowmt.5
+                                  == 1)| data.wide$non_to_low.4 == 1, 1, 0)
+data.wide$non_to_low.6 <- ifelse((data.wide$non_caregiver.5==1 & data.wide$lowmt.6
+                                  == 1) | data.wide$non_to_low.5 == 1, 1, 0)
+data.wide$non_to_low.7 <- ifelse((data.wide$non_caregiver.6==1 & data.wide$lowmt.7
+                                  == 1) | data.wide$non_to_low.6 == 1, 1, 0)
+data.wide$non_to_low.8 <- ifelse((data.wide$non_caregiver.7==1 & data.wide$lowmt.8
+                                  == 1) | data.wide$non_to_low.7 == 1, 1, 0)
+data.wide$non_to_low.9 <- ifelse((data.wide$non_caregiver.8==1 & data.wide$lowmt.9
+                                  == 1) | data.wide$non_to_low.8 == 1, 1, 0)
+data.wide$non_to_low.10 <- ifelse((data.wide$non_caregiver.9==1 &
+                                     data.wide$lowmt.10 == 1)
+                                  | data.wide$non_to_low.9 == 1, 1, 0)
+data.wide$non_to_low.11 <- ifelse((data.wide$non_caregiver.10==1 &
+                                     data.wide$lowmt.11 == 1)
+                                  | data.wide$non_to_low.10 == 1, 1, 0)
+data.wide$non_to_low.12 <- ifelse((data.wide$non_caregiver.11==1 &
+                                     data.wide$lowmt.12 == 1)
+                                  | data.wide$non_to_low.11 == 1, 1, 0)
+data.wide$non_to_low.13 <- ifelse((data.wide$non_caregiver.12==1 &
+                                     data.wide$lowmt.13 == 1)
+                                  | data.wide$non_to_low.12 == 1, 1, 0)
+
+#non care to no monetary transfers
+data.wide$non_to_nomt.2 <- 0
+data.wide$non_to_nomt.3 <- ifelse(data.wide$non_caregiver.2 ==1 &
+                                    data.wide$carenomt.3 == 1,1, 0)
+data.wide$non_to_nomt.4 <- ifelse((data.wide$non_caregiver.3 ==1 &
+                                     data.wide$carenomt.4 == 1) 
+                                  | data.wide$non_to_nomt.3 == 1, 1, 0)
+data.wide$non_to_nomt.5 <- ifelse((data.wide$non_caregiver.4==1 &
+                                     data.wide$carenomt.5 == 1)
+                                  | data.wide$non_to_nomt.4 == 1, 1, 0)
+data.wide$non_to_nomt.6 <- ifelse((data.wide$non_caregiver.5==1 &
+                                     data.wide$carenomt.6 == 1)
+                                  | data.wide$non_to_nomt.5 == 1, 1, 0)
+data.wide$non_to_nomt.7 <- ifelse((data.wide$non_caregiver.6==1 &
+                                     data.wide$carenomt.7 == 1)
+                                  | data.wide$non_to_nomt.6 == 1, 1, 0)
+data.wide$non_to_nomt.8 <- ifelse((data.wide$non_caregiver.7==1 &
+                                     data.wide$carenomt.8 == 1)
+                                  | data.wide$non_to_nomt.7 == 1, 1, 0)
+data.wide$non_to_nomt.9 <- ifelse((data.wide$non_caregiver.8==1 &
+                                     data.wide$carenomt.9 == 1)
+                                  | data.wide$non_to_nomt.8 == 1, 1, 0)
+data.wide$non_to_nomt.10 <- ifelse((data.wide$non_caregiver.9==1 &
+                                      data.wide$carenomt.10 == 1)
+                                   | data.wide$non_to_nomt.9 == 1, 1, 0)
+data.wide$non_to_nomt.11 <- ifelse((data.wide$non_caregiver.10==1 &
+                                      data.wide$carenomt.11 == 1)
+                                   | data.wide$non_to_nomt.10 == 1, 1, 0)
+data.wide$non_to_nomt.12 <- ifelse((data.wide$non_caregiver.11==1 &
+                                      data.wide$carenomt.12 == 1)
+                                   | data.wide$non_to_nomt.11 == 1, 1, 0)
+data.wide$non_to_nomt.13 <- ifelse((data.wide$non_caregiver.12==1 &
+                                      data.wide$carenomt.13 == 1)
+                                   | data.wide$non_to_nomt.12 == 1, 1, 0)
+
+#no monetary transfers to high monetary transfers
+data.wide$nomt_to_high.2 <- 0
+data.wide$nomt_to_high.3 <- ifelse(data.wide$carenomt.2 ==1 & data.wide$highmt.3 ==
+                                     1, 1, 0)
+data.wide$nomt_to_high.4 <- ifelse((data.wide$carenomt.3 ==1 & data.wide$highmt.4
+                                    == 1) | data.wide$nomt_to_high.3 == 1, 1, 0)
+data.wide$nomt_to_high.5 <- ifelse((data.wide$carenomt.4==1 & data.wide$highmt.5 ==
+                                      1) | data.wide$nomt_to_high.4 == 1, 1, 0)
+data.wide$nomt_to_high.6 <- ifelse((data.wide$carenomt.5==1 & data.wide$highmt.6 ==
+                                      1) | data.wide$nomt_to_high.5 == 1, 1, 0)
+data.wide$nomt_to_high.7 <- ifelse((data.wide$carenomt.6==1 & data.wide$highmt.7 ==
+                                      1) | data.wide$nomt_to_high.6 == 1, 1, 0)
+data.wide$nomt_to_high.8 <- ifelse((data.wide$carenomt.7==1 & data.wide$highmt.8 ==
+                                      1) | data.wide$nomt_to_high.7 == 1, 1, 0)
+data.wide$nomt_to_high.9 <- ifelse((data.wide$carenomt.8==1 & data.wide$highmt.9 ==
+                                      1) | data.wide$nomt_to_high.8 == 1, 1, 0)
+data.wide$nomt_to_high.10 <- ifelse((data.wide$carenomt.9==1 & data.wide$highmt.10
+                                     == 1) | data.wide$nomt_to_high.9 == 1, 1, 0)
+data.wide$nomt_to_high.11 <- ifelse((data.wide$carenomt.10==1 & data.wide$highmt.11
+                                     == 1)| data.wide$nomt_to_high.10 == 1, 1, 0)
+data.wide$nomt_to_high.12 <- ifelse((data.wide$carenomt.11==1 & data.wide$highmt.12
+                                     == 1) | data.wide$nomt_to_high.11 == 1, 1, 0)
+data.wide$nomt_to_high.13 <- ifelse((data.wide$carenomt.12==1 & data.wide$highmt.13
+                                     == 1) | data.wide$nomt_to_high.12 == 1, 1, 0)
+
+#no monetary transfers to low monetary transfers
+data.wide$nomt_to_low.2 <- 0
+data.wide$nomt_to_low.3 <- ifelse(data.wide$carenomt.2 ==1 & data.wide$lowmt.3 ==
+                                    1, 1, 0)
+data.wide$nomt_to_low.4 <- ifelse((data.wide$carenomt.3 ==1 & data.wide$lowmt.4 ==
+                                     1)| data.wide$nomt_to_low.3 == 1, 1, 0)
+data.wide$nomt_to_low.5 <- ifelse((data.wide$carenomt.4==1 & data.wide$lowmt.5 ==
+                                     1)| data.wide$nomt_to_low.4 == 1, 1, 0)
+data.wide$nomt_to_low.6 <- ifelse((data.wide$carenomt.5==1 & data.wide$lowmt.6 ==
+                                     1)| data.wide$nomt_to_low.5 == 1, 1, 0)
+data.wide$nomt_to_low.7 <- ifelse((data.wide$carenomt.6==1 & data.wide$lowmt.7 ==
+                                     1)| data.wide$nomt_to_low.6 == 1, 1, 0)
+data.wide$nomt_to_low.8 <- ifelse((data.wide$carenomt.7==1 & data.wide$lowmt.8 ==
+                                     1)| data.wide$nomt_to_low.7 == 1, 1, 0)
+data.wide$nomt_to_low.9 <- ifelse((data.wide$carenomt.8==1 & data.wide$lowmt.9 ==
+                                     1)| data.wide$nomt_to_low.8 == 1, 1, 0)
+data.wide$nomt_to_low.10 <- ifelse((data.wide$carenomt.9==1 & data.wide$lowmt.10 ==
+                                      1) | data.wide$nomt_to_low.9 == 1, 1, 0)
+data.wide$nomt_to_low.11 <- ifelse((data.wide$carenomt.10==1 & data.wide$lowmt.11
+                                    == 1) | data.wide$nomt_to_low.10 == 1, 1, 0)
+data.wide$nomt_to_low.12 <- ifelse((data.wide$carenomt.11==1 & data.wide$lowmt.12
+                                    == 1) | data.wide$nomt_to_low.11 == 1, 1, 0)
+data.wide$nomt_to_low.13 <- ifelse((data.wide$carenomt.12==1 & data.wide$lowmt.13
+                                    == 1) | data.wide$nomt_to_low.12 == 1, 1, 0)
+
+#no monetary transfers to non care
+data.wide$nomt_to_non.2 <- 0
+data.wide$nomt_to_non.3 <- ifelse(data.wide$carenomt.2 ==1 &
+                                    data.wide$non_caregiver.3 == 1, 1, 0)
+data.wide$nomt_to_low.3 <- ifelse(data.wide$carenomt.2 ==1 & data.wide$lowmt.3 ==
+                                    1, 1, 0)
+data.wide$nomt_to_non.4 <- ifelse((data.wide$carenomt.3 ==1 &
+                                     data.wide$non_caregiver.4 == 1) 
+                                  | data.wide$nomt_to_non.3 == 1, 1, 0)
+data.wide$nomt_to_non.5 <- ifelse((data.wide$carenomt.4==1 &
+                                     data.wide$non_caregiver.5 == 1)
+                                  | data.wide$nomt_to_non.4 == 1, 1, 0)
+data.wide$nomt_to_non.6 <- ifelse((data.wide$carenomt.5==1 &
+                                     data.wide$non_caregiver.6 == 1)
+                                  | data.wide$nomt_to_non.5 == 1, 1, 0)
+data.wide$nomt_to_non.7 <- ifelse((data.wide$carenomt.6==1 &
+                                     data.wide$non_caregiver.7 == 1)
+                                  | data.wide$nomt_to_non.6 == 1, 1, 0)
+data.wide$nomt_to_non.8 <- ifelse((data.wide$carenomt.7==1 &
+                                     data.wide$non_caregiver.8 == 1)
+                                  | data.wide$nomt_to_non.7 == 1, 1, 0)
+data.wide$nomt_to_non.9 <- ifelse((data.wide$carenomt.8==1 &
+                                     data.wide$non_caregiver.9 == 1)
+                                  | data.wide$nomt_to_non.8 == 1, 1, 0)
+data.wide$nomt_to_non.10 <- ifelse((data.wide$carenomt.9==1 &
+                                      data.wide$non_caregiver.10 == 1)
+                                   | data.wide$nomt_to_non.9 == 1, 1, 0)
+data.wide$nomt_to_non.11 <- ifelse((data.wide$carenomt.10==1 &
+                                      data.wide$non_caregiver.11 == 1)
+                                   | data.wide$nomt_to_non.10 == 1, 1, 0)
+data.wide$nomt_to_non.12 <- ifelse((data.wide$carenomt.11==1 &
+                                      data.wide$non_caregiver.12 == 1)
+                                   | data.wide$nomt_to_non.11 == 1, 1, 0)
+data.wide$nomt_to_non.13 <- ifelse((data.wide$carenomt.12==1 &
+                                      data.wide$non_caregiver.13 == 1)
+                                   | data.wide$nomt_to_non.12 == 1, 1, 0)
+
+#low monetary transfers to high monetary transfers
+data.wide$low_to_high.2 <- 0
+data.wide$low_to_high.3 <- ifelse(data.wide$lowmt.2 ==1 & data.wide$highmt.3 == 1,
+                                  1, 0)
+data.wide$low_to_high.4 <- ifelse((data.wide$lowmt.3 ==1 & data.wide$highmt.4 == 1)
+                                  | data.wide$low_to_high.3 == 1, 1, 0)
+data.wide$low_to_high.5 <- ifelse((data.wide$lowmt.4==1 & data.wide$highmt.5 == 1)
+                                  | data.wide$low_to_high.4 == 1, 1, 0)
+data.wide$low_to_high.6 <- ifelse((data.wide$lowmt.5==1 & data.wide$highmt.6 == 1)
+                                  | data.wide$low_to_high.5 == 1, 1, 0)
+data.wide$low_to_high.7 <- ifelse((data.wide$lowmt.6==1 & data.wide$highmt.7 == 1)
+                                  | data.wide$low_to_high.6 == 1, 1, 0)
+data.wide$low_to_high.8 <- ifelse((data.wide$lowmt.7==1 & data.wide$highmt.8 == 1)
+                                  | data.wide$low_to_high.7 == 1, 1, 0)
+data.wide$low_to_high.9 <- ifelse((data.wide$lowmt.8==1 & data.wide$highmt.9 == 1)
+                                  | data.wide$low_to_high.8 == 1, 1, 0)
+data.wide$low_to_high.10 <- ifelse((data.wide$lowmt.9==1 & data.wide$highmt.10 ==
+                                      1)| data.wide$low_to_high.9 == 1, 1, 0)
+data.wide$low_to_high.11 <- ifelse((data.wide$lowmt.10==1 & data.wide$highmt.11 ==
+                                      1)| data.wide$low_to_high.10 == 1, 1, 0)
+data.wide$low_to_high.12 <- ifelse((data.wide$lowmt.11==1 & data.wide$highmt.12 ==
+                                      1)| data.wide$low_to_high.11 == 1, 1, 0)
+data.wide$low_to_high.13 <- ifelse((data.wide$lowmt.12==1 & data.wide$highmt.13 ==
+                                      1)| data.wide$low_to_high.12 == 1, 1, 0)
+
+
+#low monetary transfers to no monetary transfers
+data.wide$low_to_nomt.2 <- 0
+data.wide$low_to_nomt.3 <- ifelse(data.wide$lowmt.2 ==1 & data.wide$carenomt.3 ==
+                                    1, 1, 0)
+data.wide$low_to_nomt.4 <- ifelse((data.wide$lowmt.3 ==1 & data.wide$carenomt.4 ==
+                                     1)| data.wide$low_to_nomt.3 == 1, 1, 0)
+data.wide$low_to_nomt.5 <- ifelse((data.wide$lowmt.4==1 & data.wide$carenomt.5 ==
+                                     1) | data.wide$low_to_nomt.4 == 1, 1, 0)
+data.wide$low_to_nomt.6 <- ifelse((data.wide$lowmt.5==1 & data.wide$carenomt.6 ==
+                                     1) | data.wide$low_to_nomt.5 == 1, 1, 0)
+data.wide$low_to_nomt.7 <- ifelse((data.wide$lowmt.6==1 & data.wide$carenomt.7 ==
+                                     1) | data.wide$low_to_nomt.6 == 1, 1, 0)
+data.wide$low_to_nomt.8 <- ifelse((data.wide$lowmt.7==1 & data.wide$carenomt.8 ==
+                                     1) | data.wide$low_to_nomt.7 == 1, 1, 0)
+data.wide$low_to_nomt.9 <- ifelse((data.wide$lowmt.8==1 & data.wide$carenomt.9 ==
+                                     1) | data.wide$low_to_nomt.8 == 1, 1, 0)
+data.wide$low_to_nomt.10 <- ifelse((data.wide$lowmt.9==1 & data.wide$carenomt.10 ==
+                                      1)| data.wide$low_to_nomt.9 == 1, 1, 0)
+data.wide$low_to_nomt.11 <- ifelse((data.wide$lowmt.10==1 & data.wide$carenomt.11
+                                    == 1) | data.wide$low_to_nomt.10 == 1, 1, 0)
+data.wide$low_to_nomt.12 <- ifelse((data.wide$lowmt.11==1 & data.wide$carenomt.12
+                                    == 1) | data.wide$low_to_nomt.11 == 1, 1, 0)
+data.wide$low_to_nomt.13 <- ifelse((data.wide$lowmt.12==1 & data.wide$carenomt.13
+                                    == 1) | data.wide$low_to_nomt.12 == 1, 1, 0)
+
+#low monetary transfers to no care
+data.wide$low_to_non.2 <- 0
+data.wide$low_to_non.3 <- ifelse(data.wide$lowmt.2 ==1 & data.wide$non_caregiver.3
+                                 == 1, 1, 0)
+data.wide$low_to_non.4 <- ifelse((data.wide$lowmt.3 ==1 & data.wide$non_caregiver.4
+                                  == 1)| data.wide$low_to_non.3 == 1, 1, 0)
+data.wide$low_to_non.5 <- ifelse((data.wide$lowmt.4==1 & data.wide$non_caregiver.5
+                                  == 1)| data.wide$low_to_non.4 == 1, 1, 0)
+data.wide$low_to_non.6 <- ifelse((data.wide$lowmt.5==1 & data.wide$non_caregiver.6
+                                  == 1) | data.wide$low_to_non.5 == 1, 1, 0)
+data.wide$low_to_non.7 <- ifelse((data.wide$lowmt.6==1 & data.wide$non_caregiver.7
+                                  == 1)| data.wide$low_to_non.6 == 1, 1, 0)
+data.wide$low_to_non.8 <- ifelse((data.wide$lowmt.7==1 & data.wide$non_caregiver.8
+                                  == 1)| data.wide$low_to_non.7 == 1, 1, 0)
+data.wide$low_to_non.9 <- ifelse((data.wide$lowmt.8==1 & data.wide$non_caregiver.9
+                                  == 1)| data.wide$low_to_non.8 == 1, 1, 0)
+data.wide$low_to_non.10 <- ifelse((data.wide$lowmt.9==1 &
+                                     data.wide$non_caregiver.10 == 1)
+                                  | data.wide$low_to_non.9 == 1, 1, 0)
+data.wide$low_to_non.11 <- ifelse((data.wide$lowmt.10==1 &
+                                     data.wide$non_caregiver.11 == 1)
+                                  | data.wide$low_to_non.10 == 1, 1, 0)
+data.wide$low_to_non.12 <- ifelse((data.wide$lowmt.11==1 &
+                                     data.wide$non_caregiver.12 == 1)
+                                  | data.wide$low_to_non.11 == 1, 1, 0)
+table(data.wide$low_to_non.12, useNA = "always")
+data.wide$low_to_non.13 <- ifelse((data.wide$lowmt.12==1 &
+                                     data.wide$non_caregiver.13 == 1)
+                                  | data.wide$low_to_non.12 == 1, 1, 0)
+
+#high monetary transfers to low monetary transfers
+data.wide$high_to_low.2 <- 0
+data.wide$high_to_low.3 <- ifelse(data.wide$highmt.2 ==1 & data.wide$lowmt.3 == 1,
+                                  1, 0)
+data.wide$high_to_low.4 <- ifelse((data.wide$highmt.3 ==1 & data.wide$lowmt.4 == 1)
+                                  | data.wide$high_to_low.3 == 1, 1, 0)
+data.wide$high_to_low.5 <- ifelse((data.wide$highmt.4==1 & data.wide$lowmt.5 == 1)
+                                  | data.wide$high_to_low.4 == 1, 1, 0)
+data.wide$high_to_low.6 <- ifelse((data.wide$highmt.5==1 & data.wide$lowmt.6 == 1)
+                                  | data.wide$high_to_low.5 == 1, 1, 0)
+data.wide$high_to_low.7 <- ifelse((data.wide$highmt.6==1 & data.wide$lowmt.7 == 1)
+                                  | data.wide$high_to_low.6 == 1, 1, 0)
+data.wide$high_to_low.8 <- ifelse((data.wide$highmt.7==1 & data.wide$lowmt.8 == 1)
+                                  | data.wide$high_to_low.7 == 1, 1, 0)
+data.wide$high_to_low.9 <- ifelse((data.wide$highmt.8==1 & data.wide$lowmt.9 == 1)
+                                  | data.wide$high_to_low.8 == 1, 1, 0)
+data.wide$high_to_low.10 <- ifelse((data.wide$highmt.9==1 & data.wide$lowmt.10 ==
+                                      1) | data.wide$high_to_low.9 == 1, 1, 0)
+data.wide$high_to_low.11 <- ifelse((data.wide$highmt.10==1 & data.wide$lowmt.11 ==
+                                      1) | data.wide$high_to_low.10 == 1, 1, 0)
+data.wide$high_to_low.12 <- ifelse((data.wide$highmt.11==1 & data.wide$lowmt.12 ==
+                                      1) | data.wide$high_to_low.11 == 1, 1, 0)
+data.wide$high_to_low.13 <- ifelse((data.wide$highmt.12==1 & data.wide$lowmt.13 ==
+                                      1) | data.wide$high_to_low.12 == 1, 1, 0)
+
+#high monetary transfers to no monetary transfers
+data.wide$high_to_nomt.2 <- 0
+data.wide$high_to_nomt.3 <- ifelse(data.wide$highmt.2 ==1 & data.wide$carenomt.3 ==
+                                     1,1, 0)
+data.wide$high_to_nomt.4 <- ifelse((data.wide$highmt.3 ==1 & data.wide$carenomt.4
+                                    == 1)| data.wide$high_to_nomt.3 == 1, 1, 0)
+data.wide$high_to_nomt.5 <- ifelse((data.wide$highmt.4==1 & data.wide$carenomt.5 ==
+                                      1) | data.wide$high_to_nomt.4 == 1, 1, 0)
+data.wide$high_to_nomt.6 <- ifelse((data.wide$highmt.5==1 & data.wide$carenomt.6 ==
+                                      1) | data.wide$high_to_nomt.5 == 1, 1, 0)
+data.wide$high_to_nomt.7 <- ifelse((data.wide$highmt.6==1 & data.wide$carenomt.7 ==
+                                      1)| data.wide$high_to_nomt.6 == 1, 1, 0)
+data.wide$high_to_nomt.8 <- ifelse((data.wide$highmt.7==1 & data.wide$carenomt.8 ==
+                                      1)| data.wide$high_to_nomt.7 == 1, 1, 0)
+data.wide$high_to_nomt.9 <- ifelse((data.wide$highmt.8==1 & data.wide$carenomt.9 ==
+                                      1) | data.wide$high_to_nomt.8 == 1, 1, 0)
+data.wide$high_to_nomt.10 <- ifelse((data.wide$highmt.9==1 & data.wide$carenomt.10
+                                     == 1) | data.wide$high_to_nomt.9 == 1, 1, 0)
+data.wide$high_to_nomt.11 <- ifelse((data.wide$highmt.10==1 & data.wide$carenomt.11
+                                     == 1)| data.wide$high_to_nomt.10 == 1, 1, 0)
+data.wide$high_to_nomt.12 <- ifelse((data.wide$highmt.11==1 & data.wide$carenomt.12
+                                     == 1)| data.wide$high_to_nomt.11 == 1, 1, 0)
+data.wide$high_to_nomt.13 <- ifelse((data.wide$highmt.12==1 & data.wide$carenomt.13
+                                     == 1)| data.wide$high_to_nomt.12 == 1, 1, 0)
+
+#high monetary transfers to no care
+data.wide$high_to_non.2 <- 0
+data.wide$high_to_non.3 <- ifelse(data.wide$highmt.2 ==1 &
+                                    data.wide$non_caregiver.3 == 1, 1, 0)
+data.wide$high_to_non.4 <- ifelse((data.wide$highmt.3 ==1 &
+                                     data.wide$non_caregiver.4 == 1) 
+                                  | data.wide$high_to_non.3 == 1, 1, 0)
+data.wide$high_to_non.5 <- ifelse((data.wide$highmt.4==1 &
+                                     data.wide$non_caregiver.5 == 1)
+                                  | data.wide$high_to_non.4 == 1, 1, 0)
+data.wide$high_to_non.6 <- ifelse((data.wide$highmt.5==1 &
+                                     data.wide$non_caregiver.6 == 1)
+                                  | data.wide$high_to_non.5 == 1, 1, 0)
+data.wide$high_to_non.7 <- ifelse((data.wide$highmt.6==1 &
+                                     data.wide$non_caregiver.7 == 1)
+                                  | data.wide$high_to_non.6 == 1, 1, 0)
+data.wide$high_to_non.8 <- ifelse((data.wide$highmt.7==1 &
+                                     data.wide$non_caregiver.8 == 1)
+                                  | data.wide$high_to_non.7 == 1, 1, 0)
+data.wide$high_to_non.9 <- ifelse((data.wide$highmt.8==1 &
+                                     data.wide$non_caregiver.9 == 1)
+                                  | data.wide$high_to_non.8 == 1, 1, 0)
+data.wide$high_to_non.10 <- ifelse((data.wide$highmt.9==1 &
+                                      data.wide$non_caregiver.10 == 1)
+                                   | data.wide$high_to_non.9 == 1, 1, 0)
+data.wide$high_to_non.11 <- ifelse((data.wide$highmt.10==1 &
+                                      data.wide$non_caregiver.11 == 1)
+                                   | data.wide$high_to_non.10 == 1, 1, 0)
+data.wide$high_to_non.12 <- ifelse((data.wide$highmt.11==1 &
+                                      data.wide$non_caregiver.12 == 1)
+                                   | data.wide$high_to_non.11 == 1, 1, 0)
+data.wide$high_to_non.13 <- ifelse((data.wide$highmt.12==1 &
+                                      data.wide$non_caregiver.13 == 1)
+                                   | data.wide$high_to_non.12 == 1, 1, 0)
+
+
+#Reshaping back to long format
+data.change <- melt(data.wide, varying = NULL, id.vars = c("id"), vare_name =
+                      "wave")
+data.change <-  separate(data.change, col = "variable", into = c("variable",
+                                                                 "wave"), 
+                         sep = "\\.")
+data.change <-spread(data.change, key = "variable", value = "value")
+
+
+#Include zeros where no change in caregiving variable
+data.change$non_to_care <- ifelse(is.na(data.change$non_to_care), 0,
+                                  data.change$non_to_care)
+data.change$intense_to_care <- ifelse(is.na(data.change$intense_to_care), 0,
+                                      data.change$intense_to_care)
+data.change$care_to_intense <- ifelse(is.na(data.change$care_to_intense), 0,
+                                      data.change$care_to_intense)
+data.change$non_to_intense <- ifelse(is.na(data.change$non_to_intense), 0,
+                                     data.change$non_to_intense)
+data.change$intense_to_non <- ifelse(is.na(data.change$intense_to_non), 0,
+                                     data.change$intense_to_non)
+data.change$care_to_non <- ifelse(is.na(data.change$care_to_non), 0,
+                                  data.change$care_to_non)
+
+#Include zeros where no change in MT variable
+data.change$non_to_high <- ifelse(is.na(data.change$non_to_high), 0,
+                                  data.change$non_to_high)
+data.change$non_to_low <- ifelse(is.na(data.change$non_to_low), 0,
+                                 data.change$non_to_low)
+data.change$non_to_nomt <- ifelse(is.na(data.change$non_to_nomt), 0,
+                                  data.change$non_to_nomt)
+data.change$nomt_to_high <- ifelse(is.na(data.change$nomt_to_high), 0,
+                                   data.change$nomt_to_high)
+data.change$nomt_to_low <- ifelse(is.na(data.change$nomt_to_low), 0,
+                                  data.change$nomt_to_low)
+data.change$nomt_to_non <- ifelse(is.na(data.change$nomt_to_non), 0,
+                                  data.change$nomt_to_non)
+data.change$low_to_high <- ifelse(is.na(data.change$low_to_high), 0,
+                                  data.change$low_to_high)
+data.change$low_to_nomt <- ifelse(is.na(data.change$low_to_nomt), 0,
+                                  data.change$low_to_nomt)
+data.change$low_to_non <- ifelse(is.na(data.change$low_to_non), 0,
+                                 data.change$low_to_non)
+data.change$high_to_low <- ifelse(is.na(data.change$high_to_low), 0,
+                                  data.change$high_to_low)
+data.change$high_to_nomt <- ifelse(is.na(data.change$high_to_nomt), 0,
+                                   data.change$high_to_nomt)
+data.change$high_to_non<- ifelse(is.na(data.change$high_to_non), 0,
+                                 data.change$high_to_non)
+
+#exclude data where other variables have NA - original observations
+data.change <- subset(data.change, !(is.na(age)))
+
+#define (numeric) variables as numeric
+data.change[,(2:5)] <- sapply(data.change[,2:5],as.numeric)
+data.change[,(7:30)] <- sapply(data.change[,7:30],as.numeric)
+data.change[,(32:53)] <- sapply(data.change[,32:53],as.numeric)
+data.change[,(55)] <- sapply(data.change[,55],as.numeric)
+
+#save data with exact changes
+save(data.change, file="data_with_exact_change.dta")
+```
+
+
+#Relative monetary transfers
+```{r}
+table(data.change$rel_mt)
+
+#caregiver with low RELATIVE monetary transfers 10% or below
+
+data.change$lowmt_rel <- as.factor(ifelse((data.change$lowmt == 1 |   data.change$highmt == 1) & data.change$rel_mt <= 10, 1, 0))
+
+data.change$lowmt_rel[is.na(data.change$rel_mt)] <- 0
+table(data.change$lowmt_rel)
+
+#caregiver with high RELATIVE monetary transfers
+data.change$highmt_rel <- as.factor(ifelse((data.change$lowmt == 1 |   data.change$highmt == 1) & data.change$rel_mt > 10, 1, 0))
+
+data.change$highmt_rel[is.na(data.change$rel_mt)] <- 0
+table(data.change$highmt)
+
+
+save(data.change, file="data_with_exact_change.dta")
+```
+
+
+
+## Subset data and save datafile
+#subset for binary outcome
+```{r}
+#load data
+load("data_with_exact_change.dta")
+
+#subset data to variables for data analysis comparison with non-caregivers for binary work outcome
+df_bw <- subset(data.change, select = c(id, wave, non_caregiver, carenomt, lowmt,
+                                        highmt, caregiver, intense_care, sex, age,
+                                        age_sq, partneroutside, partnerihh, single,
+                                        partner_missing, nochild, childu4,
+                                        childu15, care_intensity, work_bi, care, mt_care, highmt_rel, lowmt_rel,                                         care_b, caregiver_11, intense_care_11, mt2,
+                                        care_num, ses_low, ses_middle, ses_high,
+                                        ses_missing,  non_to_care, intense_to_care,
+                                        care_to_intense, non_to_intense,
+                                        intense_to_non, care_to_non, non_to_high,
+                                        non_to_low, non_to_nomt, nomt_to_high,
+                                        nomt_to_low, nomt_to_non, low_to_high,
+                                        low_to_nomt, low_to_non, high_to_low,
+                                        high_to_nomt, high_to_non)) #113499
+
+
+#keep only respondents with more than one observation (participated more than one wave)
+bw_com <- setDT(df_bw, key = "id")[(duplicated(id) | duplicated(id, fromLast =                                                           TRUE))] #102750
+#listwise deleting missings
+df_bw <- na.omit(df_bw)
+
+#keep only respondents with more than one observation (participated more than one wave)
+bw_com <- setDT(df_bw, key = "id")[(duplicated(id) | duplicated(id, fromLast =
+                                                                  TRUE))] #102253
+
+
+#look at waves
+table(bw_com$wave)
+
+#declare panel
+bw_com <- pdata.frame(bw_com, index = c("id", "wave"))
+
+#save
+save(bw_com, file="binary_outcome_data_for_comparison.dta")
+```
+
+
+
+#subset for (contract) working hours
+```{r}
+#subset data to variables for data analysis comparison with non-caregivers for contract working hours
+df_wh <- subset(data.change, select = c(id, wave, non_caregiver, carenomt, lowmt,
+                                        highmt, caregiver, intense_care, sex, age,
+                                        age_sq,partneroutside, partnerihh, single,
+                                        partner_missing,  nochild, childu4,
+                                        childu15, care_intensity, con_wo_ho, care, mt_care, highmt_rel, lowmt_rel,
+                                        care_b, caregiver_11, intense_care_11,
+                                        wave_years, ses_low, ses_middle, ses_high,
+                                        ses_missing, mt2,  non_to_care,
+                                        intense_to_care, care_to_intense,
+                                        non_to_intense, intense_to_non,
+                                        care_to_non, non_to_high, non_to_low,
+                                        non_to_nomt, nomt_to_high, nomt_to_low,
+                                        nomt_to_non, low_to_high, low_to_nomt,
+                                        low_to_non, high_to_low, high_to_nomt,
+                                        high_to_non))
+
+#listwise deleting missings
+df_wh <- na.omit(df_wh) 
+
+#keep only respondents with more than one observation (participated more than one wave)
+wh_com <- setDT(df_wh, key = "id")[(duplicated(id) | duplicated(id, fromLast =
+                                                                  TRUE))]
+
+#look at waves
+table(wh_com$wave)
+
+#declare panel
+wh_com <- pdata.frame(wh_com, index = c("id", "wave"))
+
+#save
+save(wh_com, file="working_hours_data_for_comparison.dta")
+```
+
+#subset for actual working hours
+```{r}
+#subset data to variables for data analysis comparison with non-caregivers for contract working hours
+df_wh_2 <- subset(data.change, select = c(id, wave, non_caregiver, carenomt, lowmt,
+                                          highmt, caregiver, intense_care, sex,
+                                          age, age_sq, partneroutside, partnerihh,
+                                          single, partner_missing,  nochild,
+                                          childu4, childu15,  care_intensity, ac_wo_ho, highmt_rel, lowmt_rel,
+                                          care, mt_care, care_b, care_num))
+
+#listwise deleting missings
+df_wh_2 <- na.omit(df_wh_2) 
+
+#keep only respondents with more than one observation (participated more than one wave)
+wh_com_act <- setDT(df_wh_2, key = "id")[(duplicated(id) | duplicated(id, fromLast
+                                                                      = TRUE))]
+
+#look at waves
+table(wh_com_act$wave)
+
+#declare panel
+wh_com_act <- pdata.frame(wh_com_act, index = c("id", "wave"))
+
+#save
+save(wh_com_act, file="actuel_working_hours_data_for_comparison.dta")
+```
