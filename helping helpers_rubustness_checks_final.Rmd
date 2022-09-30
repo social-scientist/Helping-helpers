@@ -1,0 +1,444 @@
+---
+title: "Robustness checks: Helping Helpers (https://doi.org/10.1332/239788221X16535005914874)"
+author: "Klara Raiber"
+date: "June 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Setup
+```{r}
+#working directory
+setwd("U:/P1")
+#check memory limit
+memory.limit()
+memory.limit(size = 6000000000000)
+```
+
+#Packages
+```{r}
+library(data.table)
+library(kableExtra)
+library(plyr)
+library(foreign)
+library(tidyr)
+library(haven)
+library(tidyverse)
+library(magrittr)
+library(dplyr)
+library(descr)
+library(Rmisc)
+library(plm)
+library(survival)
+library(stargazer)
+library(jtools)
+library(huxtable)
+library(tictoc)
+library(bife)
+```
+
+
+#load datasets
+```{r}
+#data for comparison
+load("actuel_working_hours_data_for_comparison.dta") 
+load("binary_outcome_data_for_comparison.dta")
+load("working_hours_data_for_comparison.dta")
+
+#subset for women
+bw_wom <- subset(bw_com, bw_com$sex == 1) # 1 is women
+#subset for men
+bw_men <- subset(bw_com, bw_com$sex == 0) # 1 is women
+```
+
+#check results for actual working hours
+```{r}
+#load data  
+load("actuel_working_hours_data_for_comparison.dta")
+
+#subset
+wh_men_act <- subset(wh_com_act, wh_com_act$sex == 0) # 1 is women
+wh_wom_act <- subset(wh_com_act, wh_com_act$sex == 1) # 1 is women
+
+#Model: caregiving on actual working hours
+#WOMEN
+care_ac_wo_ho_wom <- plm(ac_wo_ho ~ caregiver + intense_care + age + age_sq +
+                        partneroutside + partnerihh + partner_missing + nochild +
+                        childu15 ,
+                      data = wh_wom_act,
+                      index = c("id", "wave"),
+                      model = "within")
+summary(care_ac_wo_ho_wom)
+
+#MEN -intensive not anymore
+care_ac_wo_ho_men <- plm(ac_wo_ho ~ caregiver + intense_care + age + age_sq +
+                        partneroutside + partnerihh + partner_missing + nochild +
+                          childu15 ,
+                      data = wh_men_act,
+                      index = c("id", "wave"),
+                      model = "within")
+summary(care_ac_wo_ho_men)
+
+
+#Model: monetary transfers on actual working hours
+#WOMEN - no low mt any more
+mt_ac_wo_ho_wom <- plm(ac_wo_ho ~  non_caregiver + lowmt + highmt + age + age_sq +
+                      partneroutside + partnerihh + partner_missing + nochild + 
+                      childu15  ,
+                    data = wh_wom_act,
+                    index = c("id", "wave"),
+                    model = "within")
+summary(mt_ac_wo_ho_wom)
+
+#MEN
+mt_ac_wo_ho_men <- plm(ac_wo_ho ~  non_caregiver + lowmt + highmt + age + age_sq +
+                      partneroutside + partnerihh + partner_missing + nochild + 
+                      childu15  ,
+                    data = wh_men_act,
+                    index = c("id", "wave"),
+                    model = "within")
+summary(mt_ac_wo_ho_men)
+
+
+#Model: caregiving x sex on actual working hours
+care_ac_wo_ho_sex <- plm(ac_wo_ho ~ caregiver + intense_care + caregiver*sex +  intense_care*sex   + age + age_sq + partneroutside +  partnerihh + partner_missing +
+                            nochild + childu15  ,
+                          data = wh_com_act,
+                          index = c("id", "wave"),
+                      model = "within")
+summary(care_ac_wo_ho_sex)
+
+#Model 4: monetary transfers x sex on working hours
+mt_ac_wo_ho_sex <- plm(ac_wo_ho ~ non_caregiver + lowmt + highmt +
+                          non_caregiver * sex + lowmt*sex + highmt*sex + age + 
+                          age_sq + partneroutside +  partnerihh + partner_missing +
+                          nochild + childu15  ,
+                        data = wh_com_act,
+                        index = c("id", "wave"),
+                        model = "within")
+summary(mt_ac_wo_ho_sex)
+```
+
+#check influence of age restriction: narrowing down to age 18-55 on EMPLOYMENT OUTCOME
+```{r}
+#narrowing down to labor force 18-55
+bw_restrict <- subset(bw_com, bw_com$age < 56) #select respondents from 18 on till 55 
+bw_men_restrict <- subset(bw_restrict, bw_restrict$sex == 0) # 1 is women
+bw_wom_restrict <- subset(bw_restrict, bw_restrict$sex == 1) # 1 is women
+
+#Model: caregiving on employment status for age <= 55
+#WOMEN
+care_bi_em_res_wom <- bife(work_bi ~ caregiver + intense_care + age + age_sq 
+                         + partneroutside + partnerihh  + partner_missing 
+                         + nochild + childu15 | id, bw_wom_restrict, "logit")
+
+care_bi_em_res_wom <- bias_corr(care_bi_em_res_wom) #bias correction
+care_bi_em_res_wom <- get_APEs(care_bi_em_res_wom)
+summary(care_bi_em_res_wom)
+
+#MEN
+care_bi_em_res_men <- bife(work_bi ~ caregiver + intense_care + age + age_sq 
+                         + partneroutside + partnerihh  + partner_missing 
+                         + nochild + childu15 | id, bw_men_restrict, "logit")
+
+care_bi_em_res_men <- bias_corr(care_bi_em_res_men) #bias correction
+care_bi_em_res_men <- get_APEs(care_bi_em_res_men)
+summary(care_bi_em_res_men)
+
+
+#Model: monetary transfers on employment status <= 55
+#WOMEN
+mt_bi_em_res_wom <- bife(work_bi ~ non_caregiver + lowmt + highmt + age 
+                       + age_sq +  partneroutside + partnerihh  
+                       + partner_missing + nochild + childu15 
+                       | id, bw_wom_restrict, "logit")
+
+mt_bi_em_res_wom <- bias_corr(mt_bi_em_res_wom) #bias correction
+mt_bi_em_res_wom <- get_APEs(mt_bi_em_res_wom)
+summary(mt_bi_em_res_wom)
+
+#MEN
+mt_bi_em_res_men <- bife(work_bi ~ non_caregiver + lowmt + highmt + age 
+                       + age_sq +  partneroutside + partnerihh  
+                       + partner_missing + nochild + childu15 
+                       | id, bw_men_restrict, "logit")
+
+mt_bi_em_res_men <- bias_corr(mt_bi_em_res_men) #bias correction
+mt_bi_em_res_men <- get_APEs(mt_bi_em_res_men)
+summary(mt_bi_em_res_men)
+
+
+#Model: caregiving x sex on employment status <= 55
+bw_restrict$caresex <- bw_restrict$caregiver * bw_restrict$sex
+bw_restrict$intcaresex <- bw_restrict$intense_care * bw_restrict$sex
+
+care_bi_em_sex_res <- bife(work_bi ~ caregiver + intense_care  + caresex +  intcaresex + age + age_sq +  partneroutside 
+                         + partnerihh +  partner_missing  
+                         + nochild + childu15   | id, bw_restrict, "logit")
+
+
+care_bi_em_sex_res <- bias_corr(care_bi_em_sex_res) #bias correction
+care_bi_em_sex_res <- get_APEs(care_bi_em_sex_res)
+summary(care_bi_em_sex_res)
+
+
+#Model: monetary transfers x sex on employment status <= 55
+
+bw_restrict$noncaresex <- bw_restrict$non_caregiver * as.numeric(bw_restrict$sex)
+bw_restrict$lowmtsex <- bw_restrict$lowmt * as.numeric(bw_restrict$sex)
+bw_restrict$highmtsex <- bw_restrict$highmt * as.numeric(bw_restrict$sex)
+
+mt_bi_em_sex_res <- bife(work_bi ~ non_caregiver + lowmt + highmt 
+                       + noncaresex + lowmtsex
+                       + highmtsex + age + age_sq +  partneroutside 
+                       + partnerihh +  partner_missing  + nochild 
+                       + childu15   | id, bw_restrict, "logit")
+
+mt_bi_em_sex_res <- bias_corr(mt_bi_em_sex_res) #bias correction
+mt_bi_em_sex_res <- get_APEs(mt_bi_em_sex_res)
+summary(mt_bi_em_sex_res)
+
+```
+
+
+#check influence of age restriction: narrowing down to age 18-55 on WORKING HOURS
+```{r}
+#narrowing down to labor force 18-55
+wh_restrict <- subset(wh_com, wh_com$age < 56) #select respondents from 18 on till 55 
+wh_men_restrict <- subset(wh_restrict, wh_restrict$sex == 0) # 1 is women
+wh_wom_restrict <- subset(wh_restrict, wh_restrict$sex == 1) # 1 is women
+
+#Model: caregiving on working hours for age <= 55
+#WOMEN
+care_wh_res_wom <- plm(con_wo_ho ~ caregiver + intense_care + age + 
+                               age_sq +  partneroutside + partnerihh  +
+                               partner_missing + nochild + childu15 ,  
+                       data = wh_wom_restrict,
+                       index = c("id", "wave"),
+                       model = "within")
+summary(care_wh_res_wom)
+
+#MEN
+care_wh_res_men <- plm(con_wo_ho ~ caregiver + intense_care + age + 
+                               age_sq +  partneroutside  + partnerihh  +
+                               partner_missing + nochild + childu15  , 
+                       data = wh_men_restrict,
+                        index = c("id", "wave"),
+                        model = "within")
+summary(care_wh_res_men)
+
+
+#Model: monetary transfers on working hours <= 55
+#WOMEN
+mt_wh_res_wom <- plm(con_wo_ho ~ non_caregiver + lowmt + highmt + age + 
+                             age_sq +  partneroutside  + partnerihh  + 
+                             partner_missing + nochild + childu15 ,
+                     data = wh_wom_restrict,
+                      index = c("id", "wave"),
+                      model = "within")
+summary(mt_wh_res_wom)
+
+#MEN
+mt_wh_res_men <- plm(con_wo_ho ~ non_caregiver + lowmt + highmt + age + 
+                             age_sq +  partneroutside + partnerihh  + 
+                             partner_missing + nochild + childu15 ,
+                     data = wh_men_restrict,
+                     index = c("id", "wave"),
+                     model = "within")
+summary(mt_wh_res_men)
+
+#Model: caregiving x sex on working hours <= 55
+care_wh_sex_res <- plm(con_wo_ho ~ caregiver + intense_care + caregiver*sex +
+                         intense_care*sex + age + age_sq +  partneroutside +
+                         partnerihh +  partner_missing  + nochild + childu15,  
+                       data = wh_restrict,
+                       index = c("id", "wave"),
+                       model = "within") 
+summary(care_wh_sex_res)
+
+#Model: monetary transfers x sex on working hours <= 55
+mt_wh_sex_res <- plm(con_wo_ho ~ non_caregiver + lowmt + highmt + non_caregiver * 
+                     sex + lowmt * sex + highmt * sex + age + age_sq +  
+                       partneroutside +  partnerihh +  partner_missing  + nochild + 
+                       childu15 ,  
+                     data = wh_restrict,
+                     index = c("id", "wave"),
+                     model = "within")
+summary(mt_wh_sex_res)
+```
+
+
+
+#using a different cutpoint for intensive care (11 instead of 8) on EMPLOYMENT STATUS
+```{r}
+#sub-setting
+bw_com$work_bi <- as.numeric(bw_com$work_bi)
+bw_wom <- subset(bw_com, bw_com$sex == 1) # 1 is women
+bw_men <- subset(bw_com, bw_com$sex == 0) # 1 is women
+
+#Model: caregiving on employment status with 11 as cut-point
+#WOMEN
+care_bi_em_care11_wom <- bife(work_bi ~ caregiver_11 + intense_care_11 + age + age_sq 
+                         + partneroutside + partnerihh  + partner_missing 
+                         + nochild + childu15 | id, bw_wom, "logit")
+
+summary(care_bi_em_care11_wom)
+
+care_bi_em_care11_wom <- bias_corr(care_bi_em_care11_wom) #bias correction
+summary(care_bi_em_care11_wom)
+care_bi_em_care11_wom <- get_APEs(care_bi_em_care11_wom)
+summary(care_bi_em_care11_wom)
+
+
+#MEN
+care_bi_em_care11_men <- bife(work_bi ~ caregiver_11 + intense_care_11 + age + age_sq 
+                         + partneroutside + partnerihh  + partner_missing 
+                         + nochild + childu15 | id, bw_men, "logit")
+
+summary(care_bi_em_care11_men)
+
+care_bi_em_care11_men <- bias_corr(care_bi_em_care11_men) #bias correction
+summary(care_bi_em_care11_men)
+care_bi_em_care11_men <- get_APEs(care_bi_em_care11_men)
+summary(care_bi_em_care11_men)
+
+#Model: caregiving x sex on employment status with 11 as cut-point
+bw_com$caresex11 <- bw_com$caregiver_11 * bw_com$sex
+
+bw_com$intcaresex11 <- bw_com$intense_care_11 * bw_com$sex
+
+care_bi_em_sex_care11 <- bife(work_bi ~ caregiver_11 + intense_care_11  + caresex11 +  intcaresex11 + age + age_sq +  partneroutside 
+                         + partnerihh +  partner_missing  
+                         + nochild + childu15   | id, bw_com, "logit")
+
+care_bi_em_sex_care11 <- bias_corr(care_bi_em_sex_care11) #bias correction
+care_bi_em_sex_care11 <- get_APEs(care_bi_em_sex_care11)
+summary(care_bi_em_sex_care11)
+```
+
+##using a different cutpoint for intensive care (11 instead of 8) ON WORKING HOURS
+```{r}
+#sub-setting
+wh_men <- subset(wh_com, wh_com$sex == 0) # 1 is women
+wh_wom <- subset(wh_com, wh_com$sex == 1) # 1 is women
+
+#Model: caregiving on working hours with 11 as cut-point
+#WOMEN
+care_con_wo_ho_care11_wom <- plm(con_wo_ho ~ caregiver_11 + intense_care_11 + age +
+                                   age_sq + partneroutside + partnerihh +
+                                   partner_missing + nochild + childu15  , 
+                                 data = wh_wom, 
+                                 index = c("id", "wave"), 
+                                 model = "within")
+summary(care_con_wo_ho_care11_wom)
+
+#MEN
+care_con_wo_ho_care11_men <- plm(con_wo_ho ~ caregiver_11 + intense_care_11 + age +
+                                   age_sq + partneroutside + partnerihh +
+                                   partner_missing + nochild + childu15  , 
+                                 data = wh_men, 
+                                 index = c("id", "wave"), 
+                                 model = "within")
+summary(care_con_wo_ho_care11_men)
+
+#Model caregiving x sex on working hours with 11 as cut-point
+care_con_wo_ho_sex_care11 <- plm(con_wo_ho ~ caregiver_11 + intense_care_11 +
+                                   caregiver_11*sex +  intense_care_11*sex   + age +
+                                   age_sq + partneroutside +  partnerihh +
+                                   partner_missing + nochild + childu15  , 
+                                 data = wh_com, 
+                                 index = c("id", "wave"), 
+                                 model = "within")
+summary(care_con_wo_ho_sex_care11)
+```
+
+#Checking oversampling of low-ses households on models on working hours
+```{r}
+#Model: caregiving x ses on working hours
+#WOMEN
+care_con_wo_ho_wom_ses <- plm(con_wo_ho ~ caregiver*ses_missing + caregiver*ses_low +
+                                caregiver*ses_middle + intense_care*ses_missing +
+                                intense_care*ses_low + intense_care*ses_middle + age +
+                                age_sq + partneroutside + partnerihh + 
+                                partner_missing + nochild + childu15  ,
+                              data = wh_wom,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(care_con_wo_ho_wom_ses)
+
+#MEN
+care_con_wo_ho_men_ses <- plm(con_wo_ho ~ caregiver*ses_missing + caregiver*ses_low +
+                                caregiver*ses_middle + intense_care*ses_missing + 
+                                intense_care*ses_low + intense_care*ses_middle + age +
+                                age_sq + partneroutside + partnerihh + 
+                                partner_missing + nochild + childu15  ,
+                              data = wh_men,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(care_con_wo_ho_men_ses)
+
+#Model: monetary transfers x ses on working hours
+#WOMEN
+mt_con_wo_ho_wom_ses <- plm(con_wo_ho ~  non_caregiver*ses_missing + 
+                              non_caregiver*ses_low + non_caregiver*ses_middle + 
+                              lowmt*ses_missing + lowmt*ses_low + lowmt*ses_middle + 
+                              highmt*ses_missing + highmt*ses_low + 
+                              highmt*ses_middle + age + age_sq + partneroutside +
+                              partnerihh + partner_missing + nochild + childu15 ,
+                            data = wh_wom,
+                            index = c("id", "wave"),
+                            model = "within")
+summary(mt_con_wo_ho_wom_ses)
+
+#MEN
+mt_con_wo_ho_men_ses <- plm(con_wo_ho ~  non_caregiver*ses_missing +
+                              non_caregiver*ses_low + non_caregiver*ses_middle +
+                              lowmt*ses_missing + lowmt*ses_low + lowmt*ses_middle +
+                              highmt*ses_missing + highmt*ses_low + 
+                              highmt*ses_middle + age + age_sq +
+                              partneroutside + partnerihh + partner_missing + 
+                              nochild + childu15 ,
+                            data = wh_men, 
+                            indqwex = c("id", "wave"), 
+                            model = "within")
+summary(mt_con_wo_ho_men_ses)
+
+#Model 3: caregiving x ses x sex on working hours
+care_con_wo_ho_sex_ses <- plm(con_wo_ho ~ caregiver*ses_missing + 
+                                caregiver*ses_low + caregiver*ses_middle +
+                                intense_care*ses_missing + intense_care*ses_low +
+                                intense_care*ses_middle + caregiver*sex*ses_missing +
+                                caregiver*sex*ses_low + caregiver*sex*ses_middle + 
+                                intense_care*sex*ses_missing +
+                                intense_care*sex*ses_low +
+                                intense_care*sex*ses_middle + age + age_sq +
+                                partneroutside +  partnerihh +
+                                partner_missing + nochild + childu15  ,
+                              data = wh_com,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(care_con_wo_ho_sex_ses)
+
+#Model 4: monetary transfers x sex x ses on working hours
+mt_con_wo_ho_sex_ses <- plm(con_wo_ho ~ non_caregiver*ses_missing +
+                              non_caregiver*ses_low + non_caregiver*ses_middle +
+                              lowmt*ses_missing + lowmt*ses_low + lowmt*ses_middle +
+                              highmt*ses_missing + highmt*ses_low + 
+                              highmt*ses_middle + non_caregiver * sex *ses_missing + 
+                              non_caregiver * sex *ses_low + 
+                              non_caregiver * sex *ses_middle +  
+                              lowmt*sex *ses_missing + lowmt*sex *ses_low + 
+                              lowmt*sex *ses_middle + highmt*sex*ses_missing + 
+                              highmt*sex*ses_low + highmt*sex*ses_middle + age + 
+                              age_sq + partneroutside +  partnerihh + 
+                              partner_missing + nochild + childu15 ,
+                          data = wh_com,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(mt_con_wo_ho_sex_ses)
+
+```
