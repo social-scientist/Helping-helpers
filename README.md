@@ -1,7 +1,7 @@
 # Helping-helpers
 Replication files for the article helping helpers
 Article:
-Raiber, K., Verbakel, E., & Visser, M. (2022). Helping helpers? The role of monetary transfers in combining unpaid care and paid work. International Journal of Care and Caring, 1-17. 
+Raiber, K., Verbakel, E., & Visser, M. (2022). Helping helpers? The role of monetary transfers in combining unpaid care and paid work. International Journal of Care and Caring, 1-17. https://doi.org/10.1332/239788221X16535005914874
 
 
 a) Name of the person who stored the documents or files: Klara Raiber 
