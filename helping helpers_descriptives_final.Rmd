@@ -1,0 +1,851 @@
+---
+title: "Descriptives: Helping Helpers (https://doi.org/10.1332/239788221X16535005914874)"
+author: "Klara Raiber"
+date: "June 2022"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+
+```{r}
+library(data.table)
+library(tictoc)
+library(kableExtra)
+library(plyr)
+library(foreign)
+library(tidyr)
+library(haven)
+library(tidyverse)
+library(magrittr)
+library(beepr)
+library(dplyr)
+#library(XLConnect)
+library(descr)
+library(Rmisc)
+library(plm)
+library(pglm)
+library(survival)
+#library(xlsx)
+library(ggpubr)
+library(reshape)
+```
+
+
+#setup
+```{r}
+#working directory
+setwd("U:/P1")
+#check memory limit
+memory.limit()
+memory.limit(size = 6000000000000)
+```
+#load data sets
+```{r}
+#data for binary employment status
+load("binary_outcome_data_for_comparison.dta") #bw_com
+#subset for women
+bw_wom <- subset(bw_com, bw_com$sex == 1) # 1 is women
+#subset for men
+bw_men <- subset(bw_com, bw_com$sex == 0) # 1 is women
+#data for working hours
+load("working_hours_data_for_comparison.dta") #wh_com
+#subset for women
+wh_wom <- subset(wh_com, wh_com$sex == 1) # 1 is women
+#subset for men
+wh_men <- subset(wh_com, wh_com$sex == 0) # 1 is women
+```
+
+######DESCRIPTIVE TABLE A1########
+####BINARY EMPLOYMENT STATUS####
+#caregiver per wave in binary employment status sample
+```{r}
+prop.table(table(bw_com$care_b,bw_com$wave), 2)
+prop.table(table(bw_com$care,bw_com$wave), 2)
+
+sub_care <- subset(bw_com, (bw_com$caregiver == 1 | bw_com$intense_care == 1))
+prop.table(table(sub_care$intense_care))
+```
+
+#mt per wave in binary employment status sample
+```{r}
+prop.table(table(bw_com$mt_care,bw_com$wave), 2)
+```
+
+#number of respondents in binary employment status sample
+```{r}
+length(unique(bw_com$id)) # number of respondents
+```
+
+#####WOMEN FULL SAMPLE (BINARY EMPLOYMENT STATUS)######
+#Number of respondents of women in binary employment status sample
+```{r}
+length(unique(bw_wom$id)) # number of respondents women
+```
+
+# binary employment of women in binary employment status sample
+```{r}
+prop.table(table(bw_wom$work_bi))
+```
+
+#caregiving of women in binary employment status sample
+```{r}
+prop.table(table(bw_wom$care))
+```
+
+#monetary transfers of women in binary employment status sample
+```{r}
+prop.table(table(bw_wom$mt_care))
+```
+
+#age of women in binary employment status sample
+```{r}
+mean(bw_wom$age)
+sd(bw_wom$age)
+```
+
+#partner of women in binary employment status sample
+```{r}
+#single
+prop.table(table(bw_wom$single))
+#partner within the household
+prop.table(table(bw_wom$partnerihh))
+#partner outside the household
+prop.table(table(bw_wom$partneroutside))
+#partner missing
+prop.table(table(bw_wom$partner_missing))
+```
+
+#children of women in binary employment status sample
+```{r}
+#no children under 15
+prop.table(table(bw_wom$nochild))
+#child under 4
+prop.table(table(bw_wom$childu4))
+#child under 15
+prop.table(table(bw_wom$childu15))
+```
+
+
+#####MEN FULL SAMPLE (BINARY EMPLOYMENT STATUS)######
+#Number of respondents of men in binary employment status sample
+```{r}
+length(unique(bw_men$id)) # number of respondents
+```
+
+# binary employment of men in binary employment status sample
+```{r}
+prop.table(table(bw_men$work_bi))
+```
+
+#caregiving of men in binary employment status sample
+```{r}
+prop.table(table(bw_men$care))
+```
+
+#monetary transfers of men in binary employment status sample
+```{r}
+prop.table(table(bw_men$mt_care))
+```
+
+#agein of men in binary employment status sample 
+```{r}
+mean(bw_men$age)
+sd(bw_men$age)
+```
+
+#partner of men in binary employment status sample
+```{r}
+#single
+prop.table(table(bw_men$single))
+#partner within the householde
+prop.table(table(bw_men$partnerihh))
+#partner outside the household
+prop.table(table(bw_men$partneroutside))
+#partner missing
+prop.table(table(bw_men$partner_missing))
+```
+
+#children of men in binary employment status sample
+```{r}
+#no children under 15
+prop.table(table(bw_men$nochild))
+#child under 4
+prop.table(table(bw_men$childu4))
+#child under 15
+prop.table(table(bw_men$childu15))
+```
+
+
+#####WORKING HOURS#####
+#number of respondents for working hours sample
+```{r}
+length(unique(wh_com$id)) # number of respondents
+```
+
+#####WOMEN WORKING HOURS SAMPLE######
+#Number of respondents of women in working hours sample
+```{r}
+length(unique(wh_wom$id)) # number of respondents
+```
+
+#working hours of women in working hours sample
+```{r}
+mean(wh_wom$con_wo_ho)
+sd(wh_wom$con_wo_ho)
+```
+
+#caregiving of women in working hours sample
+```{r}
+prop.table(table(wh_wom$care))
+```
+
+#monetary transfers of women in working hours sample
+```{r}
+prop.table(table(wh_wom$mt_care))
+```
+
+#age of women in working hours sample
+```{r}
+mean(wh_wom$age)
+sd(wh_wom$age)
+```
+
+#partner of women in working hours sample
+```{r}
+#single
+prop.table(table(wh_wom$single))
+#partner within the householde
+prop.table(table(wh_wom$partnerihh))
+#partner outside the household
+prop.table(table(wh_wom$partneroutside))
+#partner missing
+prop.table(table(wh_wom$partner_missing))
+```
+
+#children of women in working hours sample
+```{r}
+#no children under 15
+prop.table(table(wh_wom$nochild))
+#child under 4
+prop.table(table(wh_wom$childu4))
+#child under 15
+prop.table(table(wh_wom$childu15))
+```
+
+
+#####MEN WORKING HOURS SAMPLE######
+#Number of respondents of men in working hours sample
+```{r}
+length(unique(wh_men$id)) # number of respondents
+```
+
+#working hours of men in working hours sample
+```{r}
+mean(wh_men$con_wo_ho)
+sd(wh_men$con_wo_ho)
+```
+
+#caregiving of men in working hours sample
+```{r}
+prop.table(table(wh_men$care))
+```
+
+#monetary transfers of men in working hours sample
+```{r}
+prop.table(table(wh_men$mt_care))
+```
+
+#age of men in working hours sample
+```{r}
+mean(wh_men$age)
+sd(wh_men$age)
+```
+
+#partner of men in working hours sample
+```{r}
+#single
+prop.table(table(wh_men$single))
+#partner within the householde
+prop.table(table(wh_men$partnerihh))
+#partner outside the household
+prop.table(table(wh_men$partneroutside))
+#partner missing
+prop.table(table(wh_men$partner_missing))
+```
+
+#children of men in working hours sample
+```{r}
+#no children under 15
+prop.table(table(wh_men$nochild))
+#child under 4
+prop.table(table(wh_men$childu4))
+#child under 15
+prop.table(table(wh_men$childu15))
+```
+
+
+
+#####table A2 und A3 and preparation table 1#####
+```{r}
+#to wide format
+bw_com.wide <- bw_com  %>% gather (key = variable, value = values, non_caregiver:high_to_non, -id, -wave)
+bw_com.wide <- bw_com.wide %>% unite(variable.wave, variable, wave, sep = ".")
+bw_com.wide <- bw_com.wide %>% spread(key = variable.wave, value = values)
+
+#calculate changes in care for table 1
+#to intense care
+bw_com.wide$to_intense.2 <- NA
+bw_com.wide$to_intense.3 <- ifelse(bw_com.wide$intense_care.2 == 0 &
+                                       bw_com.wide$intense_care.3 == 1, 1, 0)
+bw_com.wide$to_intense.4 <- ifelse(bw_com.wide$intense_care.3 == 0 &
+                                       bw_com.wide$intense_care.4 == 1, 1, 0)
+bw_com.wide$to_intense.5 <- ifelse(bw_com.wide$intense_care.4 == 0 &
+                                       bw_com.wide$intense_care.5 == 1, 1, 0)
+bw_com.wide$to_intense.6 <- ifelse(bw_com.wide$intense_care.5 == 0 &
+                                       bw_com.wide$intense_care.6 == 1, 1, 0)
+bw_com.wide$to_intense.7 <- ifelse(bw_com.wide$intense_care.6 == 0 &
+                                       bw_com.wide$intense_care.7 == 1, 1, 0)
+bw_com.wide$to_intense.8 <- ifelse(bw_com.wide$intense_care.7 == 0 &
+                                       bw_com.wide$intense_care.8 == 1, 1, 0)
+bw_com.wide$to_intense.9 <- ifelse(bw_com.wide$intense_care.8 == 0 &
+                                       bw_com.wide$intense_care.9 == 1, 1, 0)
+bw_com.wide$to_intense.10 <- ifelse(bw_com.wide$intense_care.9 == 0 &
+                                       bw_com.wide$intense_care.10 == 1, 1, 0)
+bw_com.wide$to_intense.11 <- ifelse(bw_com.wide$intense_care.10 == 0 &
+                                       bw_com.wide$intense_care.11 == 1, 1, 0)
+bw_com.wide$to_intense.12 <- ifelse(bw_com.wide$intense_care.11 == 0 &
+                                       bw_com.wide$intense_care.12 == 1, 1, 0)
+bw_com.wide$to_intense.13 <- ifelse(bw_com.wide$intense_care.12 == 0 &
+                                       bw_com.wide$intense_care.13 == 1, 1, 0)
+
+#to (non-intense) care
+bw_com.wide$to_caregiver.2 <- NA
+bw_com.wide$to_caregiver.3 <- ifelse(bw_com.wide$caregiver.2 == 0 &
+                                       bw_com.wide$caregiver.3 == 1, 1, 0)
+bw_com.wide$to_caregiver.4 <- ifelse(bw_com.wide$caregiver.3 == 0 &
+                                       bw_com.wide$caregiver.4 == 1, 1, 0)
+bw_com.wide$to_caregiver.5 <- ifelse(bw_com.wide$caregiver.4 == 0 &
+                                       bw_com.wide$caregiver.5 == 1, 1, 0)
+bw_com.wide$to_caregiver.6 <- ifelse(bw_com.wide$caregiver.5 == 0 &
+                                       bw_com.wide$caregiver.6 == 1, 1, 0)
+bw_com.wide$to_caregiver.7 <- ifelse(bw_com.wide$caregiver.6 == 0 &
+                                       bw_com.wide$caregiver.7 == 1, 1, 0)
+bw_com.wide$to_caregiver.8 <- ifelse(bw_com.wide$caregiver.7 == 0 &
+                                       bw_com.wide$caregiver.8 == 1, 1, 0)
+bw_com.wide$to_caregiver.9 <- ifelse(bw_com.wide$caregiver.8 == 0 &
+                                       bw_com.wide$caregiver.9 == 1, 1, 0)
+bw_com.wide$to_caregiver.10 <- ifelse(bw_com.wide$caregiver.9 == 0 &
+                                       bw_com.wide$caregiver.10 == 1, 1, 0)
+bw_com.wide$to_caregiver.11 <- ifelse(bw_com.wide$caregiver.10 == 0 &
+                                       bw_com.wide$caregiver.11 == 1, 1, 0)
+bw_com.wide$to_caregiver.12 <- ifelse(bw_com.wide$caregiver.11 == 0 &
+                                       bw_com.wide$caregiver.12 == 1, 1, 0)
+bw_com.wide$to_caregiver.13 <- ifelse(bw_com.wide$caregiver.12 == 0 &
+                                       bw_com.wide$caregiver.13 == 1, 1, 0)
+
+#to non-caregiving
+bw_com.wide$to_non_caregiver.2 <- NA
+bw_com.wide$to_non_caregiver.3 <- ifelse(bw_com.wide$non_caregiver.2 == 0 &
+                                       bw_com.wide$non_caregiver.3 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.4 <- ifelse(bw_com.wide$non_caregiver.3 == 0 &
+                                       bw_com.wide$non_caregiver.4 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.5 <- ifelse(bw_com.wide$non_caregiver.4 == 0 &
+                                       bw_com.wide$non_caregiver.5 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.6 <- ifelse(bw_com.wide$non_caregiver.5 == 0 &
+                                       bw_com.wide$non_caregiver.6 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.7 <- ifelse(bw_com.wide$non_caregiver.6 == 0 &
+                                       bw_com.wide$non_caregiver.7 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.8 <- ifelse(bw_com.wide$non_caregiver.7 == 0 &
+                                       bw_com.wide$non_caregiver.8 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.9 <- ifelse(bw_com.wide$non_caregiver.8 == 0 &
+                                       bw_com.wide$non_caregiver.9 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.10 <- ifelse(bw_com.wide$non_caregiver.9 == 0 &
+                                       bw_com.wide$non_caregiver.10 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.11 <- ifelse(bw_com.wide$non_caregiver.10 == 0 &
+                                       bw_com.wide$non_caregiver.11 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.12 <- ifelse(bw_com.wide$non_caregiver.11 == 0 &
+                                       bw_com.wide$non_caregiver.12 == 1, 1, 0)
+bw_com.wide$to_non_caregiver.13 <- ifelse(bw_com.wide$non_caregiver.12 == 0 &
+                                       bw_com.wide$non_caregiver.13 == 1, 1, 0)
+
+#calculate change of employment status
+bw_com.wide$change_bw.2 <- NA
+bw_com.wide$change_bw.3 <- as.numeric(bw_com.wide$work_bi.2) -
+  as.numeric(bw_com.wide$work_bi.3)
+bw_com.wide$change_bw.4 <- as.numeric(bw_com.wide$work_bi.3) -
+  as.numeric(bw_com.wide$work_bi.4)
+bw_com.wide$change_bw.5 <- as.numeric(bw_com.wide$work_bi.4) -
+  as.numeric(bw_com.wide$work_bi.5)
+bw_com.wide$change_bw.6 <- as.numeric(bw_com.wide$work_bi.5) -
+  as.numeric(bw_com.wide$work_bi.6)
+bw_com.wide$change_bw.7 <- as.numeric(bw_com.wide$work_bi.6) -
+  as.numeric(bw_com.wide$work_bi.7)
+bw_com.wide$change_bw.8 <- as.numeric(bw_com.wide$work_bi.7) -
+  as.numeric(bw_com.wide$work_bi.8)
+bw_com.wide$change_bw.9 <- as.numeric(bw_com.wide$work_bi.8) -
+  as.numeric(bw_com.wide$work_bi.9)
+bw_com.wide$change_bw.10 <- as.numeric(bw_com.wide$work_bi.9) -
+  as.numeric(bw_com.wide$work_bi.10)
+bw_com.wide$change_bw.11 <- as.numeric(bw_com.wide$work_bi.10) -
+  as.numeric(bw_com.wide$work_bi.11)
+bw_com.wide$change_bw.12 <- as.numeric(bw_com.wide$work_bi.11) -
+  as.numeric(bw_com.wide$work_bi.12)
+bw_com.wide$change_bw.13 <- as.numeric(bw_com.wide$work_bi.12) -
+  as.numeric(bw_com.wide$work_bi.13)
+
+
+#lable: -1 is change from non-employed to employed, 1 is change from employed to non-employed
+bw_com.wide$change_bw.3 <- recode(bw_com.wide$change_bw.3 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.4 <- recode(bw_com.wide$change_bw.4 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.5 <- recode(bw_com.wide$change_bw.5 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.6 <- recode(bw_com.wide$change_bw.6 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.7 <- recode(bw_com.wide$change_bw.7 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.8 <- recode(bw_com.wide$change_bw.8 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.9 <- recode(bw_com.wide$change_bw.9 , "-1" = 
+                                    "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.10 <- recode(bw_com.wide$change_bw.10 , "-1" = 
+                                     "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.11 <- recode(bw_com.wide$change_bw.11 , "-1" = 
+                                     "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.12 <- recode(bw_com.wide$change_bw.12 , "-1" = 
+                                     "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+bw_com.wide$change_bw.13 <- recode(bw_com.wide$change_bw.13 , "-1" = 
+                                     "non-employed to employed",
+                                  "0" = "stable", "1" = "employed to non-employed")
+
+#frequencies for table A2 - employment
+prop.table(table(bw_com.wide$change_bw.3))
+prop.table(table(bw_com.wide$change_bw.4))
+prop.table(table(bw_com.wide$change_bw.5))
+prop.table(table(bw_com.wide$change_bw.6))
+prop.table(table(bw_com.wide$change_bw.7))
+prop.table(table(bw_com.wide$change_bw.8))
+prop.table(table(bw_com.wide$change_bw.9))
+prop.table(table(bw_com.wide$change_bw.10))
+prop.table(table(bw_com.wide$change_bw.11))
+prop.table(table(bw_com.wide$change_bw.12))
+prop.table(table(bw_com.wide$change_bw.13))
+
+#Number of observations  for table A2
+length(which(!is.na(bw_com.wide$change_bw.3)))
+length(which(!is.na(bw_com.wide$change_bw.4)))
+length(which(!is.na(bw_com.wide$change_bw.5)))
+length(which(!is.na(bw_com.wide$change_bw.6)))
+length(which(!is.na(bw_com.wide$change_bw.7)))
+length(which(!is.na(bw_com.wide$change_bw.8)))
+length(which(!is.na(bw_com.wide$change_bw.9)))
+length(which(!is.na(bw_com.wide$change_bw.10)))
+length(which(!is.na(bw_com.wide$change_bw.11)))
+length(which(!is.na(bw_com.wide$change_bw.12)))
+length(which(!is.na(bw_com.wide$change_bw.13)))
+
+#caculate change for care
+bw_com.wide$change_care.10 <- as.numeric(bw_com.wide$care_num.9) - 
+  as.numeric(bw_com.wide$care_num.10)
+bw_com.wide$change_care.11 <- as.numeric(bw_com.wide$care_num.10) -
+  as.numeric(bw_com.wide$care_num.11)
+bw_com.wide$change_care.12 <- as.numeric(bw_com.wide$care_num.11) -
+  as.numeric(bw_com.wide$care_num.12)
+bw_com.wide$change_care.13 <- as.numeric(bw_com.wide$care_num.12) -
+  as.numeric(bw_com.wide$care_num.13)
+bw_com.wide$change_care.2 <- NA
+bw_com.wide$change_care.3 <- as.numeric(bw_com.wide$care_num.2) -
+  as.numeric(bw_com.wide$care_num.3)
+bw_com.wide$change_care.4 <- as.numeric(bw_com.wide$care_num.3) -
+  as.numeric(bw_com.wide$care_num.4)
+bw_com.wide$change_care.5 <- as.numeric(bw_com.wide$care_num.4) -
+  as.numeric(bw_com.wide$care_num.5)
+bw_com.wide$change_care.6 <- as.numeric(bw_com.wide$care_num.5) -
+  as.numeric(bw_com.wide$care_num.6)
+bw_com.wide$change_care.7 <- as.numeric(bw_com.wide$care_num.6) -
+  as.numeric(bw_com.wide$care_num.7)
+bw_com.wide$change_care.8 <- as.numeric(bw_com.wide$care_num.7) -
+  as.numeric(bw_com.wide$care_num.8)
+bw_com.wide$change_care.9 <- as.numeric(bw_com.wide$care_num.8) -
+  as.numeric(bw_com.wide$care_num.9)
+
+
+# positive is a change towards less caregiving
+#negative is a change towards more caregiving
+bw_com.wide$change_care.3 <- recode(bw_com.wide$change_care.3 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.4 <- recode(bw_com.wide$change_care.4 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.5 <- recode(bw_com.wide$change_care.5 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.6 <- recode(bw_com.wide$change_care.6 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.7 <- recode(bw_com.wide$change_care.7 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.8 <- recode(bw_com.wide$change_care.8 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.9 <- recode(bw_com.wide$change_care.9 , "-1" = 
+                                      "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.10 <- recode(bw_com.wide$change_care.10 , "-1" = 
+                                       "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.11 <- recode(bw_com.wide$change_care.11 , "-1" = 
+                                       "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.12 <- recode(bw_com.wide$change_care.12 , "-1" = 
+                                       "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+bw_com.wide$change_care.13 <- recode(bw_com.wide$change_care.13 , "-1" = 
+                                       "more caregiving", 
+                                    "-2" = "more caregiving", "0" = "stable", "1" = 
+                                      "less caregiving", "2" = "less caregiving")
+
+#frequencies for table A2
+prop.table(table(bw_com.wide$change_care.3))
+prop.table(table(bw_com.wide$change_care.4))
+prop.table(table(bw_com.wide$change_care.5))
+prop.table(table(bw_com.wide$change_care.6))
+prop.table(table(bw_com.wide$change_care.7))
+prop.table(table(bw_com.wide$change_care.8))
+prop.table(table(bw_com.wide$change_care.9))
+prop.table(table(bw_com.wide$change_care.10))
+prop.table(table(bw_com.wide$change_care.11))
+prop.table(table(bw_com.wide$change_care.12))
+prop.table(table(bw_com.wide$change_care.13))
+
+
+
+#save
+save(bw_com.wide, file="bw_com.wide.dta")
+
+#make data set smaller keeping only relevant variables
+load("bw_com.wide.dta")
+bw_com.wide <- subset(bw_com.wide, select = c(id, age.3, age.4, age.5, age.6, age.7, age.8, age.9, age.10, age.11, age.12, age.13, change_bw.3, change_bw.4, change_bw.5, change_bw.6, change_bw.7, change_bw.8, change_bw.9, change_bw.10, change_bw.11, change_bw.12, change_bw.13, to_caregiver.3, to_caregiver.4, to_caregiver.5, to_caregiver.6, to_caregiver.7, to_caregiver.8, to_caregiver.9, to_caregiver.10, to_caregiver.11, to_caregiver.12, to_caregiver.13, to_intense.3, to_intense.4, to_intense.5, to_intense.6, to_intense.7, to_intense.8, to_intense.9, to_intense.10, to_intense.11, to_intense.12, to_intense.13, to_non_caregiver.3, to_non_caregiver.4, to_non_caregiver.5, to_non_caregiver.6, to_non_caregiver.7, to_non_caregiver.8, to_non_caregiver.9, to_non_caregiver.10, to_non_caregiver.11, to_non_caregiver.12, to_non_caregiver.13, change_care.3, change_care.4, change_care.5, change_care.6, change_care.7, change_care.8, change_care.9, change_care.10, change_care.11, change_care.12, change_care.13))
+
+
+#back to long format
+
+bw_com.change <- melt(bw_com.wide, varying = NULL, id.vars = c("id"), vare_name = "wave")
+bw_com.change <-  separate(bw_com.change, col = "variable", into = c("variable", "wave"), sep = "\\.")
+bw_com.change <-spread(bw_com.change, key = "variable", value = "value")
+
+#reduce to regular number of observation (exclude NA)
+bw_com.change <- subset(bw_com.change, !(is.na(age)))
+
+
+```
+#Rest Table A2
+```{r}
+prop.table(table(bw_com.change$change_bw)) # averages
+length(which(!is.na(w_com.change$change_bw))) # all observations together
+prop.table(table(bw_com.change$change_care)) #averages
+
+```
+
+
+
+#####Table 1: Changes in care by changes in employment for succeeding years (in percentages)####
+```{r}
+
+
+#towards (non-intensive) care
+table(bw_com.change$change_bw)
+table(bw_com.change$to_caregiver)
+table(bw_com.change$to_caregiver, bw_com.change$change_bw)
+prop.table(table(bw_com.change$to_caregiver, bw_com.change$change_bw),1)
+#towards intensive 
+table(bw_com.change$to_intense)
+table(bw_com.change$to_intense, bw_com.change$change_bw)
+prop.table(table(bw_com.change$to_intense, bw_com.change$change_bw),1)
+#towards non-caregiving
+table(bw_com.change$to_non_caregiver)
+table(bw_com.change$to_non_caregiver, bw_com.change$change_bw)
+prop.table(table(bw_com.change$to_non_caregiver, bw_com.change$change_bw),1)
+#stable
+bw_com.change$stable <- ifelse(bw_com.change$to_caregiver == 0 & bw_com.change$to_intense ==
+                                 0 & bw_com.change$to_non_caregiver == 0, 1, 0)
+table(bw_com.change$stable)
+table(bw_com.change$stable, bw_com.change$change_bw)
+prop.table(table(bw_com.change$stable, bw_com.change$change_bw),1)
+```
+
+# care at least once 
+```{r}
+###EMPLOYMENT STATUS###
+#save within variation on care
+within_vars <- data.frame(tapply(bw_com$non_caregiver, bw_com$id, sd))
+#get mean of variation
+mean_care <- data.frame(tapply(bw_com$non_caregiver, bw_com$id, mean))
+#get all that care more than once
+mean_care_2 <- data.frame(mean_care[which(mean_care$tapply.bw_com.non_caregiver..bw_com.id..mean.<1),])
+#respondents that care at least once
+count(mean_care_2) 
+#proportion of respondents that care at least once
+count(mean_care_2)/count(mean_care) #16%
+
+####WORKING HOURS####
+#save within variation on care
+within_vars_wh <- data.frame(tapply(wh_com$non_caregiver, wh_com$id, sd))
+#get mean of variation
+mean_care_wh <- data.frame(tapply(wh_com$non_caregiver, wh_com$id, mean))
+#get all that care more than once
+mean_care_2_wh <- data.frame(mean_care_wh[which(mean_care_wh$tapply.wh_com.non_caregiver..wh_com.id..mean.<1),]) 
+#respondents that care at least once
+count(mean_care_2_wh) 
+#proportion of respondents that care at least once
+count(mean_care_2_wh)/count(mean_care_wh)
+```
+
+# receives monetary transfers 
+```{r}
+#subset to only those that care
+bw_carer <- subset(bw_com, bw_com$care_b == 1)
+#how many of those that care receive monetary transfers
+prop.table(table(bw_carer$mt_care, bw_carer$wave),2)
+#mean monetary transfers of those that care
+mean(bw_carer$mt2)
+#mean of monetary transfers by intensity 
+tapply(bw_carer$mt2, bw_carer$care, mean)
+#mean of monetary transfers by employment status
+tapply(bw_carer$mt2, bw_carer$work_bi, mean)
+#mean of monetary transfers by sex
+tapply(bw_carer$mt2, bw_carer$sex, mean)
+
+#Check age of people with low MTs
+newdata <- bw_carer[ which(bw_carer$mt <= 157),]
+mean(newdata$age)
+#Check age of people with high MTs
+newdata_2 <- bw_carer[ which(bw_carer$mt > 157),]
+mean(newdata_2$age)
+
+#subset to those that receive MTs
+bw_mt <- subset(bw_carer, bw_carer$mt2 > 0)
+#summary receiving MTs
+tapply(bw_mt$mt2, bw_mt$wave, summary)
+#mean of those that receive MTs
+tapply(bw_mt$mt2, bw_mt$wave, mean)
+#median of those that receive MTs
+tapply(bw_mt$mt2, bw_mt$wave, median)
+```
+
+#plotting descriptives
+#graph on binary employment status with care 
+```{r}
+#prepare 
+bw_com$work_bi <- as.numeric(bw_com$work_bi)
+bw_com$sex <- as.factor(bw_com$sex)
+
+#label sex
+bw_com$Sex[bw_com$sex == 0] <- "Men"
+bw_com$Sex[bw_com$sex == 1] <- "Women"
+
+
+#change to British spelling
+bw_com$Care <- as.character(ifelse(bw_com$care == 'Non-caregiver', 'Non-carer', bw_com$care))
+bw_com$Care <- as.character(ifelse(bw_com$care == 'Non-intensive Caregiver', 'Non-intensive carer', bw_com$Care))
+bw_com$Care <- as.character(ifelse(bw_com$care == 'Intensive caregiver', 'Intensive carer', bw_com$Care))
+
+
+
+#calculate frequencies per group
+w3 <- summarySE(bw_com, measurevar="work_bi", groupvars=c("Care", "Sex"), na.rm = TRUE)
+table(w3$Care)
+
+#plot
+care_work_bi  <- ggplot(w3, aes(Sex, work_bi)) +   
+  geom_bar(aes(fill = Care), width = 0.5, position = "dodge", stat="identity") +
+  labs(x ="", y = "Percentage employed", shape="Care") +
+  theme_set(theme_classic()) +
+  scale_fill_manual(values= c("darkgrey", "darkslategrey", "black")) +
+                      theme(text = element_text(size = 20))
+#have a look
+care_work_bi
+
+#save
+ggsave(care_work_bi, filename = "care_work_bi.jpg",
+       device = "jpg", width = 20 , height = 14,
+       units = "cm", dpi = 500)
+
+#chisquare for descriptive differences
+chisq.test(bw_wom$work_bi, bw_wom$care, correct=FALSE)
+chisq.test(bw_men$work_bi, bw_men$care, correct=FALSE)
+
+```
+
+#graph on employment status per MT
+```{r}
+#prepare
+bw_com$work_bi <- as.numeric(bw_com$work_bi)
+bw_com$sex <- as.factor(bw_com$sex)
+
+#lable sex
+bw_com$Sex[bw_com$sex == 0] <- "Men"
+bw_com$Sex[bw_com$sex == 1] <- "Women"
+
+#change to British spelling
+bw_com$Mt_care <- as.character(ifelse(bw_com$mt_care == 'Non-caregiver', 'Non-carer', bw_com$mt_care))
+bw_com$Mt_care <- as.character(ifelse(bw_com$mt_care == 'Caregiver without mt', 'Carer without mt', bw_com$Mt_care))
+bw_com$Mt_care <- as.character(ifelse(bw_com$mt_care == 'Caregiver with low mt', 'Carer with low mt', bw_com$Mt_care))
+bw_com$Mt_care <- as.character(ifelse(bw_com$mt_care == 'Caregiver with high mt', 'Carer with high mt', bw_com$Mt_care))
+
+
+
+
+#calculate frequencies per group
+w3 <- summarySE(bw_com, measurevar="work_bi", groupvars=c("Mt_care", "Sex"), na.rm = TRUE)
+
+
+#plot
+mt_work_bi  <- ggplot(w3, aes(Sex, work_bi)) +   
+  geom_bar(aes(fill = Mt_care), width = 0.5, position = "dodge", stat="identity") +
+  labs(x ="", y = "Percentage employed", fill="Monetary Transfers (mt)") +
+  theme_set(theme_classic()) +  
+  scale_fill_manual(values= c("darkgrey", "darkslategrey", "grey39", "black"))+
+                      theme(text = element_text(size = 20))
+#have a look
+mt_work_bi
+
+#save
+ggsave(mt_work_bi, filename = "mt_work_bi.jpg",
+       device = "jpg", width = 20 , height = 14,
+       units = "cm", dpi = 500)
+
+#chi-sqaure test
+chisq.test(bw_wom$work_bi, bw_wom$mt_care, correct=FALSE)
+chisq.test(bw_men$work_bi, bw_men$mt_care, correct=FALSE)
+```
+
+#graph on working hours and care
+```{r}
+#label sex
+wh_com$Sex[wh_com$sex == 0] <- "Men"
+wh_com$Sex[wh_com$sex == 1] <- "Women"
+
+
+#change to British spelling
+wh_com$Care <- as.character(ifelse(wh_com$care == 'Non-caregiver', 'Non-carer', wh_com$care))
+wh_com$Care <- as.character(ifelse(wh_com$care == 'Non-intensive Caregiver', 'Non-intensive carer', wh_com$Care))
+wh_com$Care <- as.character(ifelse(wh_com$care == 'Intensive caregiver', 'Intensive carer', wh_com$Care))
+
+
+#calculate differences per group
+w_3 <- summarySE(wh_com, measurevar="con_wo_ho", groupvars=c("Care", "Sex"), na.rm = TRUE)
+table(w_3)
+
+#plot
+care_con_wo_ho  <- ggplot(w_3, aes(Sex, con_wo_ho)) +   
+  geom_bar(aes(fill = Care), width = 0.5, position = "dodge", stat="identity") +
+  labs(x ="", y = "Average working hours", shape="Care") +
+  theme_set(theme_classic()) +
+  scale_fill_manual(values= c("darkgrey", "darkslategrey", "black")) +
+                      theme(text = element_text(size = 20))
+#have a look
+care_con_wo_ho
+
+#save
+ggsave(care_con_wo_ho, filename = "care_con_wo_ho.jpg",
+       device = "jpg", width = 20 , height = 14,
+       units = "cm", dpi = 500)
+
+#chi square test
+chisq.test(wh_wom$con_wo_ho, wh_wom$care, correct=FALSE)
+chisq.test(wh_men$con_wo_ho, wh_men$care, correct=FALSE)
+
+```
+
+#graph on working hours and MT
+```{r}
+#lable sex
+wh_com$Sex[wh_com$sex == 0] <- "Men"
+wh_com$Sex[wh_com$sex == 1] <- "Women"
+
+
+#change to British spelling
+wh_com$Mt_care <- as.character(ifelse(wh_com$mt_care == 'Non-caregiver', 'Non-carer', wh_com$mt_care))
+wh_com$Mt_care <- as.character(ifelse(wh_com$mt_care == 'Caregiver without mt', 'Carer without mt', wh_com$Mt_care))
+wh_com$Mt_care <- as.character(ifelse(wh_com$mt_care == 'Caregiver with low mt', 'Carer with low mt', wh_com$Mt_care))
+wh_com$Mt_care <- as.character(ifelse(wh_com$mt_care == 'Caregiver with high mt', 'Carer with high mt', wh_com$Mt_care))
+
+
+#calculate frequencies per group
+w_4 <- summarySE(wh_com, measurevar="con_wo_ho", groupvars=c("Mt_care", "Sex"), na.rm = TRUE)
+table(w_4)
+
+#plot
+mt_con_wo_ho  <- ggplot(w_4, aes(Sex, con_wo_ho)) +   
+  geom_bar(aes(fill = Mt_care), width = 0.5, position = "dodge", stat="identity") +
+  labs(x ="", y = "Average working hours", fill="Monetary Transfers (mt)") +
+  theme_set(theme_classic()) +
+  scale_fill_manual(values= c("darkgrey", "darkslategrey", "grey39", "black")) +
+                      theme(text = element_text(size = 20))
+#have a look
+mt_con_wo_ho
+
+#save
+ggsave(mt_con_wo_ho, filename = "mt_con_wo_ho.jpg",
+       device = "jpg", width = 20 , height = 14,
+       units = "cm", dpi = 500)
+
+#Test for group differences 
+chisq.test(wh_wom$con_wo_ho, wh_wom$mt_care, correct=FALSE)
+chisq.test(wh_men$con_wo_ho, wh_men$mt_care, correct=FALSE)
+```
+
+#putting graphs together: FIGURE 1 & 2
+```{r}
+#####CARE - FIGURE 1 #####
+graphs_on_care <- ggarrange(care_work_bi, care_con_wo_ho,
+                    ncol = 2, nrow = 1,
+common.legend = TRUE, legend = "right")
+graphs_on_care
+
+#save
+ggsave(graphs_on_care, filename = "graphs_on_care.eps",
+       device = "eps", width = 25, height = 10,
+       units = "cm", dpi = 500)
+
+#####Monetary transfers - FIGURE 2####
+graphs_on_mt <- ggarrange(mt_work_bi, mt_con_wo_ho,
+                    ncol = 2, nrow = 1,
+common.legend = TRUE, legend = "right")
+graphs_on_mt
+
+#save
+ggsave(graphs_on_mt, filename = "graphs_on_mt.eps",
+       device = "eps", width = 25, height = 10,
+       units = "cm", dpi = 500)
+```
+
