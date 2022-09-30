@@ -1,0 +1,1493 @@
+---
+title: "data analysis: Helping Helpers (https://doi.org/10.1332/239788221X16535005914874)"
+author: "Klara Raiber"
+date: "June 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Setup
+```{r}
+#working directory
+setwd("U:/P1")
+memory.limit()
+memory.limit(size = 6000000000000)
+```
+
+#Packages
+```{r}
+library(data.table)
+library(tictoc)
+library(kableExtra)
+library(plyr)
+library(foreign)
+library(tidyr)
+library(haven)
+library(tidyverse)
+library(magrittr)
+library(beepr)
+library(dplyr)
+#library(xlsx)
+#library(XLConnect)
+library(descr)
+library(Rmisc)
+library(plm)
+library(pglm)
+library(survival)
+library(stargazer)
+library(jtools)
+library(huxtable)
+library(tictoc)
+library(margins)
+library(survival)
+library(coefplot)
+library(broom)
+library(ggplot2)
+library(margins)
+library(dotwhisker)
+library(officer)
+library(flextable)
+
+library(bife) #for AME
+```
+
+#####binary employment status#####
+## load datasets
+```{r}
+#data for comparison
+load("binary_outcome_data_for_comparison.dta") #bw_com
+bw_com$work_bi <- as.numeric(bw_com$work_bi)
+#subset for women
+bw_wom <- subset(bw_com, bw_com$sex == 1) # 1 is women
+#subset for men
+bw_men <- subset(bw_com, bw_com$sex == 0) # 1 is women
+```
+
+#Model 1a (Table 2): caregiving on employment status for women
+```{r}
+#model 1a
+care_bi_em_wom <- bife(work_bi ~ caregiver + intense_care + age + age_sq 
+                         + partneroutside + partnerihh  + partner_missing 
+                         + nochild + childu15 | id, bw_wom, "logit")
+
+care_bi_em_wom <- bias_corr(care_bi_em_wom) #bias correction
+care_bi_em_wom <- get_APEs(care_bi_em_wom)
+summary(care_bi_em_wom)
+
+```
+
+#Model 1b (Table 2): caregiving on employment status for men
+```{r}
+#model 1b
+care_bi_em_men <- bife(work_bi ~ caregiver + intense_care + age + age_sq 
+                         + partneroutside + partnerihh  + partner_missing 
+                         + nochild + childu15 | id, bw_men, "logit")
+
+care_bi_em_men <- bias_corr(care_bi_em_men) #bias correction
+care_bi_em_men <- get_APEs(care_bi_em_men)
+summary(care_bi_em_men)
+```
+
+#Model 3a (Table 2): monetary transfers on employment status for women
+```{r}
+#model 3.1
+mt_bi_em_wom <- bife(work_bi ~ non_caregiver + lowmt + highmt + age 
+                       + age_sq +  partneroutside + partnerihh  
+                       + partner_missing + nochild + childu15 
+                       | id, bw_wom, "logit")
+
+mt_bi_em_wom <- bias_corr(mt_bi_em_wom) #bias correction
+mt_bi_em_wom <- get_APEs(mt_bi_em_wom)
+summary(mt_bi_em_wom)
+
+#relative MTs instead
+bw_wom_rel <- bw_wom[!((bw_wom$highmt== 1 | bw_wom$lowmt == 1) & (bw_wom$highmt_rel == 0 & bw_wom$lowmt_rel == 0)),] # subset those that have mts in the "normal" meassure but non in the relative meassure (missing hhincome) #same observations
+
+mt_bi_em_wom_rel <- bife(work_bi ~ non_caregiver + lowmt_rel + highmt_rel + age 
+                       + age_sq +  partneroutside + partnerihh  
+                       + partner_missing + nochild + childu15 
+                      | id, bw_wom, "logit")
+
+summary(mt_bi_em_wom_rel)
+
+mt_bi_em_wom_rel <- bias_corr(mt_bi_em_wom_rel) #bias correction
+summary(mt_bi_em_wom_rel)
+mt_bi_em_wom_rel <- get_APEs(mt_bi_em_wom_rel)
+summary(mt_bi_em_wom_rel)
+
+```
+
+#Model 3b (Table 2): monetary transfers on employment status for men
+```{r}
+#model 3.1
+mt_bi_em_men <- bife(work_bi ~ non_caregiver + lowmt + highmt + age 
+                       + age_sq + partneroutside + partnerihh  
+                       + partner_missing + nochild + childu15 
+                      | id, bw_men, "logit")
+
+mt_bi_em_men <- bias_corr(mt_bi_em_men) #bias correction
+mt_bi_em_men <- get_APEs(mt_bi_em_men)
+summary(mt_bi_em_men)
+
+#relative MTs instead
+bw_men_rel <- bw_men[!((bw_men$highmt== 1 | bw_men$lowmt == 1) & (bw_men$highmt_rel == 0 & bw_men$lowmt_rel == 0)),] # subset those that have mts in the "normal" meassure but non in the relative meassure (missing hhincome) #one observation less 
+
+#relative MT
+mt_bi_em_men_rel <- bife(work_bi ~ non_caregiver + lowmt_rel + highmt_rel + age 
+                       + age_sq + partneroutside + partnerihh  
+                       + partner_missing + nochild + childu15 
+                      | id, bw_men_rel, "logit")
+
+summary(mt_bi_em_men_rel)
+
+mt_bi_em_men_rel <- bias_corr(mt_bi_em_men_rel) #bias correction
+summary(mt_bi_em_men_rel)
+mt_bi_em_men_rel <- get_APEs(mt_bi_em_men_rel)
+summary(mt_bi_em_men_rel)
+
+```
+
+#Model: caregiving x sex on employment status
+```{r}
+
+bw_com$caresex <- bw_com$caregiver * bw_com$sex
+bw_com$intcaresex <- bw_com$intense_care * bw_com$sex
+
+care_bi_em_sex <- bife(work_bi ~ caregiver + intense_care  + caresex +  intcaresex + age + age_sq +  partneroutside 
+                         + partnerihh +  partner_missing  
+                         + nochild + childu15   | id, bw_com, "logit")
+
+
+care_bi_em_sex <- bias_corr(care_bi_em_sex) #bias correction
+care_bi_em_sex <- get_APEs(care_bi_em_sex)
+summary(care_bi_em_sex)
+```
+
+
+#Model: monetary transfers x sex on employment status
+```{r}
+bw_com$noncaresex <- bw_com$non_caregiver * as.numeric(bw_com$sex)
+bw_com$lowmtsex <- bw_com$lowmt * as.numeric(bw_com$sex)
+bw_com$highmtsex <- bw_com$highmt * as.numeric(bw_com$sex)
+
+mt_bi_em_sex <- bife(work_bi ~ non_caregiver + lowmt + highmt 
+                       + noncaresex + lowmtsex
+                       + highmtsex + age + age_sq +  partneroutside 
+                       + partnerihh +  partner_missing  + nochild 
+                       + childu15   | id, bw_com, "logit")
+
+mt_bi_em_sex <- bias_corr(mt_bi_em_sex) #bias correction
+mt_bi_em_sex <- get_APEs(mt_bi_em_sex)
+summary(mt_bi_em_sex)
+
+
+#relative MTs instead
+bw_com_rel <- bw_com[!((bw_com$highmt== 1 | bw_com$lowmt == 1) & (bw_com$highmt_rel == 0 & bw_com$lowmt_rel == 0)),] # subset those that have mts in the "normal" meassure but non in the relative meassure (missing hhincome) #one observation less 
+
+bw_com_rel$noncaresex <- as.numeric(bw_com_rel$non_caregiver) * as.numeric(bw_com_rel$sex)
+
+bw_com_rel$lowmtsex <- as.numeric(bw_com_rel$lowmt_rel) * as.numeric(bw_com_rel$sex)
+
+bw_com_rel$highmtsex <- as.numeric(bw_com_rel$highmt_rel) * as.numeric(bw_com_rel$sex)
+
+#relative MT
+mt_bi_em_sex_rel <- bife(work_bi ~ non_caregiver + lowmt_rel + highmt_rel 
+                       + noncaresex + lowmtsex
+                       + highmtsex + age + age_sq +  partneroutside 
+                       + partnerihh +  partner_missing  + nochild 
+                       + childu15   | id, bw_com_rel, "logit")
+
+summary(mt_bi_em_sex_rel)
+
+mt_bi_em_sex_rel <- bias_corr(mt_bi_em_sex_rel) #bias correction
+summary(mt_bi_em_sex_rel)
+mt_bi_em_sex_rel <- get_APEs(mt_bi_em_sex_rel)
+summary(mt_bi_em_sex_rel)
+
+```
+
+######WORKING HOURS##### 
+# load datasets
+```{r}
+#data for comparison
+load("working_hours_data_for_comparison.dta") #wh_com
+wh_men <- subset(wh_com, wh_com$sex == 0) # 1 is women
+wh_wom <- subset(wh_com, wh_com$sex == 1) # 1 is women
+```
+
+#Model 2a (Table 3): Caregiving on working hours for women
+```{r}
+#model 2a
+care_con_wo_ho_wom <- plm(con_wo_ho ~ caregiver + intense_care + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15 ,
+                          data = wh_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+
+summary(care_con_wo_ho_wom)
+```
+
+#Model 2b (Table 3): Caregiving on working hours for men
+```{r}
+#model 2b
+care_con_wo_ho_men <- plm(con_wo_ho ~ caregiver + intense_care + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = wh_men,
+                          index = c("id", "wave"),
+                          model = "within")
+
+summary(care_con_wo_ho_men)
+```
+
+#Model 4a (Table 3): Monetary transfers on working hours for women
+```{r}
+#model 4a
+mt_con_wo_ho_wom <- plm(con_wo_ho ~  non_caregiver + lowmt + highmt + age + 
+                          age_sq + partneroutside + partnerihh + 
+                          partner_missing + nochild + childu15 ,
+                        data = wh_wom,
+                        index = c("id", "wave"),
+                        model = "within")
+
+summary(mt_con_wo_ho_wom)
+
+#change of reference 
+mt_con_wo_ho_wom <- plm(con_wo_ho ~  non_caregiver + caregiver + highmt + age + 
+                          age_sq + partneroutside + partnerihh + 
+                          partner_missing + nochild + childu15 ,
+                        data = wh_wom,
+                        index = c("id", "wave"),
+                        model = "within")
+
+summary(mt_con_wo_ho_wom)
+
+#relative MT
+#relative MTs instead
+wh_wom_rel <- wh_wom[!((wh_wom$highmt== 1 | wh_wom$lowmt == 1) & (wh_wom$highmt_rel == 0 & wh_wom$lowmt_rel == 0)),] # subset those that have mts in the "normal" meassure but non in the relative meassure (missing hhincome) #same amount of observations
+
+mt_con_wo_ho_wom_rel <-  plm(con_wo_ho ~  non_caregiver + lowmt_rel + highmt_rel  + age + 
+                          age_sq + partneroutside + partnerihh + 
+                          partner_missing + nochild + childu15 ,
+                        data = wh_wom,
+                        index = c("id", "wave"),
+                        model = "within")
+
+summary(mt_con_wo_ho_wom_rel)
+```
+
+#Model 4b (Table 3): Monetary transfers on working hours for MEN
+```{r}
+mt_con_wo_ho_men <- plm(con_wo_ho ~  non_caregiver + lowmt + highmt + age + 
+                          age_sq + partneroutside + partnerihh + 
+                          partner_missing + nochild + childu15,
+                        data = wh_men,
+                        index = c("id", "wave"),
+                        model = "within")
+
+summary(mt_con_wo_ho_men)
+
+
+#relative MT
+#relative MTs instead
+wh_men_rel <- wh_men[!((wh_men$highmt== 1 | wh_men$lowmt == 1) & (wh_men$highmt_rel == 0 & wh_men$lowmt_rel == 0)),] # subset those that have mts in the "normal" meassure but non in the relative meassure (missing hhincome) #one observation less 
+
+mt_con_wo_ho_men_rel <- plm(con_wo_ho ~  non_caregiver + lowmt_rel + highmt_rel + age + 
+                          age_sq + partneroutside + partnerihh + 
+                          partner_missing + nochild + childu15,
+                        data = wh_men,
+                        index = c("id", "wave"),
+                        model = "within")
+
+summary(mt_con_wo_ho_men_rel)
+
+```
+
+#Model: caregiving x sex on working hours
+```{r}
+care_con_wo_ho_sex <- plm(con_wo_ho ~ caregiver + intense_care + 
+                            caregiver*sex +  intense_care*sex + age + 
+                            age_sq + partneroutside +  partnerihh + 
+                            partner_missing + nochild + childu15,
+                          data = wh_com,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(care_con_wo_ho_sex)
+
+#random effects
+care_con_wo_ho_sex_random <- plm(con_wo_ho ~ caregiver + intense_care + 
+                            caregiver +  intense_care + sex + age + 
+                            age_sq + partneroutside +  partnerihh + 
+                            partner_missing + nochild + childu15,
+                          data = wh_com,
+                          index = c("id", "wave"),
+                          model = "random")
+summary(care_con_wo_ho_sex_random)
+```
+
+#Model: monetary transfers x sex on working hours
+```{r}
+mt_con_wo_ho_sex <- plm(con_wo_ho ~ non_caregiver + lowmt + highmt +
+                          non_caregiver * sex + lowmt*sex + highmt*sex + age + 
+                          age_sq + partneroutside +  partnerihh + partner_missing +
+                          nochild + childu15,
+                        data = wh_com,
+                        index = c("id", "wave"),
+                        model = "within")
+
+summary(mt_con_wo_ho_sex)
+
+mt_con_wo_ho_sex_random <- plm(con_wo_ho ~ non_caregiver + lowmt + highmt +
+                          non_caregiver + lowmt + highmt + sex + age + 
+                          age_sq + partneroutside +  partnerihh + partner_missing +
+                          nochild + childu15,
+                        data = wh_com,
+                        index = c("id", "wave"),
+                        model = "random")
+summary(mt_con_wo_ho_sex_random)
+```
+
+#include tables in a word document
+```{r}
+export_summs(care_con_wo_ho_wom, mt_con_wo_ho_wom, care_con_wo_ho_men, mt_con_wo_ho_men,
+             model.names = c("Model 2a", "Model 4a", "Model 2b", "Model 4b"),
+             coefs = c( "Non-caregiver" = "non_caregiver",
+                        "Non-intensive caregiver" = "caregiver",
+                        "Intensive caregiver" = "intense_care",
+                        "Caregiver with low monetary transfers" = "lowmt",
+                        "Caregiver with high monetary transfers" =
+                          "highmt",
+                        "Age" = "age",
+                        "Squared age" = "age_sq",
+                        "Partner outside the HH" = "partneroutside",
+                        "Partner inside the HH" = "partnerihh",  
+                        "Partner missing" = "partner_missing",
+                        "No children under 15 in HH" = "nochild",
+                        "Youngest child between 4 and 14" = "childu15"),
+             scale = TRUE, 
+             to.file="word",
+             file.name = "Contract working hours.docx")
+```
+
+#exact changes caregiving on employment status - Table A3
+```{r}
+
+load("binary_outcome_data_for_comparison.dta")
+#subset for women
+bw_wom_change <- subset(bw_com, bw_com$sex == 1) # 1 is women
+#subset for men
+bw_men_change <- subset(bw_com, bw_com$sex == 0) # 1 is women
+
+#NON TO INTENSE
+#subset for women
+sub_bw_bw_non_to_intense_wom <- bw_wom_change[!((bw_wom_change$non_to_intense==1 & bw_wom_change$intense_to_care==1) | (bw_wom_change$non_to_intense==1 & bw_wom_change$intense_to_non==1)), ]  
+
+#non to intense model for women on employment status
+bw_non_to_intense_wom <- bife(work_bi ~ non_to_intense + age + age_sq + 
+                                  partneroutside + partnerihh  + partner_missing +
+                                  nochild + childu15 | id, sub_bw_bw_non_to_intense_wom, "logit")
+bw_non_to_intense_wom <- bias_corr(bw_non_to_intense_wom) #bias correction
+bw_non_to_intense_wom <- get_APEs(bw_non_to_intense_wom)
+summary(bw_non_to_intense_wom)
+
+#subset for men
+sub_bw_bw_non_to_intense_men <- bw_men_change[!((bw_men_change$non_to_intense==1 &
+                                                   bw_men_change$intense_to_care==1)
+                                                | (bw_men_change$non_to_intense==1
+                                                   &
+                                                     bw_men_change$intense_to_non==1)),
+                                              ]  
+
+#non to intense model for men on employment status
+bw_non_to_intense_men <- bife(work_bi ~ non_to_intense + age + age_sq + 
+                                  partneroutside + partnerihh  + partner_missing +
+                                  nochild + childu15 | id, sub_bw_bw_non_to_intense_men, "logit")
+bw_non_to_intense_men <- bias_corr(bw_non_to_intense_men) #bias correction
+bw_non_to_intense_men <- get_APEs(bw_non_to_intense_men)
+summary(bw_non_to_intense_men)
+
+
+#NON TO CARE
+#subset for women
+sub_bw_bw_non_to_care_wom <- bw_wom_change[!((bw_wom_change$non_to_care==1 &
+                                                bw_wom_change$care_to_intense==1) |
+                                               (bw_wom_change$non_to_care==1 &
+                                                  bw_wom_change$care_to_non==1)), ]
+
+#model non to care for women on employment status
+bw_non_to_care_wom <- bife(work_bi ~ non_to_care + age + age_sq +  
+                               partneroutside  + partnerihh  + partner_missing +
+                               nochild + childu15 | id, sub_bw_bw_non_to_care_wom, "logit")
+bw_non_to_care_wom <- bias_corr(bw_non_to_care_wom) #bias correction
+bw_non_to_care_wom <- get_APEs(bw_non_to_care_wom)
+summary(bw_non_to_care_wom)
+
+
+#subset for men
+sub_bw_bw_non_to_care_men <- bw_men_change[!((bw_men_change$non_to_care==1 &
+                                                bw_men_change$care_to_intense==1) |
+                                               (bw_men_change$non_to_care==1 &
+                                                  bw_men_change$care_to_non==1)), ]
+
+#model non to care for men on employment status
+bw_non_to_care_men <- bife(work_bi ~ non_to_care + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15 | id, sub_bw_bw_non_to_care_men, "logit")
+bw_non_to_care_men <- bias_corr(bw_non_to_care_men) #bias correction
+bw_non_to_care_men <- get_APEs(bw_non_to_care_men)
+summary(bw_non_to_care_men)
+
+
+#CARE TO INTENSE
+#subset for women
+sub_bw_care_to_intense_wom <- bw_wom_change[!((bw_wom_change$care_to_intense==1 &
+                                                 bw_wom_change$intense_to_non==1) |
+                                                (bw_wom_change$care_to_intense==1 &
+                                                   bw_wom_change$intense_to_care==1)),
+                                            ]  
+
+#model care to intense for women on employment status
+bw_care_to_intense_wom <- bife(work_bi ~ care_to_intense + age + age_sq + 
+                                   partneroutside + partnerihh  + partner_missing +
+                                   nochild + childu15 | id, sub_bw_care_to_intense_wom,
+                               "logit")
+bw_care_to_intense_wom <- bias_corr(bw_care_to_intense_wom) #bias correction
+bw_care_to_intense_wom <- get_APEs(bw_care_to_intense_wom)
+summary(bw_care_to_intense_wom)
+
+#subset for men
+sub_bw_care_to_intense_men <- bw_men_change[!((bw_men_change$care_to_intense==1 &
+                                                 bw_men_change$intense_to_non==1) |
+                                                (bw_men_change$care_to_intense==1 &
+                                                   bw_men_change$intense_to_care==1)),
+                                            ]  
+
+#model care to intense for men on employment status
+bw_care_to_intense_men <- bife(work_bi ~ care_to_intense + age + age_sq + 
+                                   partneroutside + partnerihh  + partner_missing +
+                                   nochild + childu15 | id, sub_bw_care_to_intense_men, "logit")
+bw_care_to_intense_men <- bias_corr(bw_care_to_intense_men) #bias correction
+bw_care_to_intense_men <- get_APEs(bw_care_to_intense_men)
+summary(bw_care_to_intense_men)
+
+
+#CARE TO NON
+#subset for women
+sub_bw_care_to_non_wom <- bw_wom_change[!((bw_wom_change$care_to_non==1 &
+                                             bw_wom_change$non_to_care==1) |
+                                            (bw_wom_change$care_to_non==1 &
+                                               bw_wom_change$non_to_intense==1)), ]  
+
+#model care to non for women on employment status
+bw_care_to_non_wom <- bife(work_bi ~ care_to_non + age + age_sq +  
+                               partneroutside  + partnerihh  + partner_missing + 
+                               nochild + childu15 | id, sub_bw_care_to_non_wom, "logit")
+bw_care_to_non_wom <- bias_corr(bw_care_to_non_wom) #bias correction
+bw_care_to_non_wom <- get_APEs(bw_care_to_non_wom)
+summary(bw_care_to_non_wom)
+
+#subset for men
+sub_bw_care_to_non_men <- bw_men_change[!((bw_men_change$care_to_non==1 &
+                                             bw_men_change$non_to_care==1) |
+                                            (bw_men_change$care_to_non==1 &
+                                               bw_men_change$non_to_intense==1)), ]  
+
+#model care to non for men on employment status
+bw_care_to_non_men <- bife(work_bi ~ care_to_non + age + age_sq +  
+                               partneroutside  + partnerihh  + partner_missing + 
+                               nochild + childu15 | id, sub_bw_care_to_non_men, "logit")
+bw_care_to_non_men <- bias_corr(bw_care_to_non_men) #bias correction
+bw_care_to_non_men <- get_APEs(bw_care_to_non_men)
+summary(bw_care_to_non_men)
+
+#INTENSE TO NON
+#subset for women
+sub_bw_intense_to_non_wom <- bw_wom_change[!((bw_wom_change$intense_to_non==1 &
+                                                bw_wom_change$non_to_care==1) |
+                                               (bw_wom_change$intense_to_non==1 &
+                                                  bw_wom_change$non_to_intense==1)),
+                                           ]  
+#model intense to non for women on employment status
+bw_intense_to_non_wom <- bife(work_bi ~ intense_to_non + age + age_sq +  
+                                  partneroutside + partnerihh  + partner_missing +
+                                  nochild + childu15 | id, sub_bw_intense_to_non_wom,
+                              "logit")
+bw_intense_to_non_wom <- bias_corr(bw_intense_to_non_wom) #bias correction
+bw_intense_to_non_wom <- get_APEs(bw_intense_to_non_wom)
+summary(bw_intense_to_non_wom)
+
+
+#subset for men
+sub_bw_intense_to_non_men <- bw_men_change[!((bw_men_change$intense_to_non==1 &
+                                                bw_men_change$non_to_care==1) |
+                                               (bw_men_change$intense_to_non==1 &
+                                                  bw_men_change$non_to_intense==1)),
+                                           ]  
+#model intense to non for men on employment status
+bw_intense_to_non_men <- bife(work_bi ~ intense_to_non + age + age_sq +  
+                                  partneroutside + partnerihh  + partner_missing +
+                                  nochild + childu15 | id, sub_bw_intense_to_non_men, "logit")
+bw_intense_to_non_men <- bias_corr(bw_intense_to_non_men) #bias correction
+bw_intense_to_non_men <- get_APEs(bw_intense_to_non_men)
+summary(bw_intense_to_non_men)
+
+#INTENSE TO CARE
+#subset for women
+sub_bw_intense_to_care_wom <- bw_wom_change[!((bw_wom_change$intense_to_care==1 &
+                                                 bw_wom_change$care_to_intense==1)
+                                              | (bw_wom_change$intense_to_care==1 &
+                                                   bw_wom_change$care_to_non==1)), ]
+
+#model intense to care for women on employment status
+bw_intense_to_care_wom <- bife(work_bi ~ intense_to_care + age + age_sq +  
+                                   partneroutside + partnerihh  + partner_missing + 
+                                   nochild + childu15  | id,  sub_bw_intense_to_care_wom, "logit")
+bw_intense_to_care_wom <- bias_corr(bw_intense_to_care_wom) #bias correction
+bw_intense_to_care_wom <- get_APEs(bw_intense_to_care_wom)
+summary(bw_intense_to_care_wom)
+
+
+#subset for men
+sub_bw_intense_to_care_men <- bw_men_change[!((bw_men_change$intense_to_care==1 &
+                                                 bw_men_change$care_to_intense==1)
+                                              | (bw_men_change$intense_to_care==1 &
+                                                   bw_men_change$care_to_non==1)),]
+
+#model intense to care for men on employment status
+bw_intense_to_care_men <- bife(work_bi ~ intense_to_care + age + age_sq +  
+                                   partneroutside + partnerihh  + partner_missing + 
+                                   nochild + childu15  | id,  sub_bw_intense_to_care_men, "logit")
+bw_intense_to_care_men <- bias_corr(bw_intense_to_care_men) #bias correction
+bw_intense_to_care_men <- get_APEs(bw_intense_to_care_men)
+summary(bw_intense_to_care_men)
+```
+
+#exact changes monetary transfers on employment status
+```{r}
+load("binary_outcome_data_for_comparison.dta")
+#subset for women
+bw_wom_change <- subset(bw_com, bw_com$sex == 1) # 1 is women
+#subset for men
+bw_men_change <- subset(bw_com, bw_com$sex == 0) # 1 is women
+
+#NON TO LOW
+#subset for women
+sub_bw_non_to_low_wom <- bw_wom_change[!((bw_wom_change$non_to_low==1 &
+                                            bw_wom_change$low_to_non==1) |
+                                           (bw_wom_change$non_to_low==1 &
+                                              bw_wom_change$low_to_high==1) |
+                                           (bw_wom_change$non_to_low==1 &
+                                              bw_wom_change$low_to_nomt==1) ), ]
+
+#model non to low for women on employment status
+bw_non_to_low_wom <- bife(work_bi ~ non_to_low + age + age_sq +  
+                              partneroutside+ partnerihh  + partner_missing +
+                              nochild + childu15| id, 
+                            sub_bw_non_to_low_wom, "logit")
+bw_non_to_low_wom <- bias_corr(bw_non_to_low_wom) #bias correction
+bw_non_to_low_wom <- get_APEs(bw_non_to_low_wom)
+summary(bw_non_to_low_wom)
+
+#subset for men
+sub_bw_non_to_low_men <- bw_men_change[!((bw_men_change$non_to_low==1 &
+                                            bw_men_change$low_to_non==1) |
+                                           (bw_men_change$non_to_low==1 &
+                                              bw_men_change$low_to_high==1) |
+                                           (bw_men_change$non_to_low==1 &
+                                              bw_men_change$low_to_nomt ==1) ), ]  
+
+#model non to low for men on employment status
+bw_non_to_low_men <- bife(work_bi ~ non_to_low + age + age_sq +  
+                              partneroutside + partnerihh  + partner_missing +
+                              nochild + childu15| id, 
+                            sub_bw_non_to_low_men, "logit")
+bw_non_to_low_men <- bias_corr(bw_non_to_low_men) #bias correction
+bw_non_to_low_men <- get_APEs(bw_non_to_low_men)
+summary(bw_non_to_low_men)
+
+#NOMT TO LOW
+#subset for women
+sub_bw_nomt_to_low_wom <- bw_wom_change[!((bw_wom_change$nomt_to_low==1 &
+                                             bw_wom_change$low_to_non==1) |
+                                            (bw_wom_change$nomt_to_low==1 &
+                                               bw_wom_change$low_to_high==1) |
+                                            (bw_wom_change$nomt_to_low==1 &
+                                               bw_wom_change$low_to_nomt ==1) ), ]  
+
+#model nomt to low for women on employment status
+bw_nomt_to_low_wom <- bife(work_bi ~ nomt_to_low + age + age_sq + 
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_nomt_to_low_wom, "logit")
+bw_nomt_to_low_wom <- bias_corr(bw_nomt_to_low_wom) #bias correction
+bw_nomt_to_low_wom <- get_APEs(bw_nomt_to_low_wom)
+summary(bw_nomt_to_low_wom)
+
+#subset for men
+sub_bw_nomt_to_low_men <- bw_men_change[!((bw_men_change$nomt_to_low==1 &
+                                             bw_men_change$low_to_non==1) |
+                                            (bw_men_change$nomt_to_low==1 &
+                                               bw_men_change$low_to_high==1) |
+                                            (bw_men_change$nomt_to_low==1 &
+                                               bw_men_change$low_to_nomt ==1) ), ]  
+
+#model nomt to low for men on employment status
+bw_nomt_to_low_men <- bife(work_bi ~ nomt_to_low + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_nomt_to_low_men, "logit")
+
+bw_nomt_to_low_men <- bias_corr(bw_nomt_to_low_men) #bias correction
+bw_nomt_to_low_men <- get_APEs(bw_nomt_to_low_men)
+summary(bw_nomt_to_low_men)
+
+#LOW TO NON
+#subset for women
+sub_bw_low_to_non_wom <- bw_wom_change[!((bw_wom_change$low_to_non==1 &
+                                            bw_wom_change$non_to_low==1) |
+                                           (bw_wom_change$low_to_non==1 &
+                                              bw_wom_change$non_to_high==1) |
+                                           (bw_wom_change$low_to_non==1 &
+                                              bw_wom_change$non_to_nomt ==1) ), ]  
+
+#model low to non for women on employment status
+bw_low_to_non_wom <- bife(work_bi ~ low_to_non + age + age_sq +  
+                              partneroutside + partnerihh  + partner_missing +
+                              nochild + childu15| id, 
+                            sub_bw_low_to_non_wom, "logit")
+bw_low_to_non_wom <- bias_corr(bw_low_to_non_wom) #bias correction
+bw_low_to_non_wom <- get_APEs(bw_low_to_non_wom)
+summary(bw_low_to_non_wom)
+
+#subset for men
+sub_bw_low_to_non_men <- bw_men_change[!((bw_men_change$low_to_non==1 &
+                                            bw_men_change$non_to_low==1) |
+                                           (bw_men_change$low_to_non==1 &
+                                              bw_men_change$non_to_high==1) |
+                                           (bw_men_change$low_to_non==1 &
+                                              bw_men_change$non_to_nomt ==1) ), ]  
+
+#model low to non for men on employment status
+bw_low_to_non_men <- bife(work_bi ~ low_to_non + age + age_sq +  
+                              partneroutside + partnerihh  + partner_missing +
+                              nochild + childu15| id, 
+                            sub_bw_low_to_non_men, "logit")
+bw_low_to_non_men <- bias_corr(bw_low_to_non_men) #bias correction
+bw_low_to_non_men <- get_APEs(bw_low_to_non_men)
+summary(bw_low_to_non_men)
+
+#LOT TO NOMT
+#subset for women
+sub_bw_low_to_nomt_wom <- bw_wom_change[!((bw_wom_change$low_to_nomt==1 &
+                                             bw_wom_change$nomt_to_low==1) |
+                                            (bw_wom_change$low_to_nomt==1 &
+                                               bw_wom_change$nomt_to_high==1) |
+                                            (bw_wom_change$low_to_nomt==1 &
+                                               bw_wom_change$nomt_to_non ==1) ), ]  
+
+#model lot to nomt for women on employment status
+bw_low_to_nomt_wom <- bife(work_bi ~ low_to_nomt + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_low_to_nomt_wom, "logit")
+bw_low_to_nomt_wom <- bias_corr(bw_low_to_nomt_wom) #bias correction
+bw_low_to_nomt_wom <- get_APEs(bw_low_to_nomt_wom)
+summary(bw_low_to_nomt_wom)
+
+#subset for men
+sub_bw_low_to_nomt_men <- bw_men_change[!((bw_men_change$low_to_nomt==1 &
+                                             bw_men_change$nomt_to_low==1) |
+                                            (bw_men_change$low_to_nomt==1 &
+                                               bw_men_change$nomt_to_high==1) |
+                                            (bw_men_change$low_to_nomt==1 &
+                                               bw_men_change$nomt_to_non ==1) ), ]  
+
+#model lot to nomt for men on employment status
+bw_low_to_nomt_men <- bife(work_bi ~ low_to_nomt + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_low_to_nomt_men, "logit")
+bw_low_to_nomt_men <- bias_corr(bw_low_to_nomt_men) #bias correction
+bw_low_to_nomt_men <- get_APEs(bw_low_to_nomt_men)
+summary(bw_low_to_nomt_men)
+
+#LOW TO HIGH
+#subset for women
+sub_bw_low_to_high_wom <- bw_wom_change[!((bw_wom_change$low_to_high==1 &
+                                             bw_wom_change$high_to_low==1) |
+                                            (bw_wom_change$high_to_non==1 &
+                                               bw_wom_change$nomt_to_high==1) |
+                                            (bw_wom_change$low_to_high==1 &
+                                               bw_wom_change$high_to_nomt ==1) ), ]  
+
+#model low to high for women on employment status
+bw_low_to_high_wom <- bife(work_bi ~ low_to_high + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_low_to_high_wom, "logit")
+bw_low_to_high_wom <- bias_corr(bw_low_to_high_wom) #bias correction
+bw_low_to_high_wom <- get_APEs(bw_low_to_high_wom)
+summary(bw_low_to_high_wom)
+
+#subset for men
+sub_bw_low_to_high_men <- bw_men_change[!((bw_men_change$low_to_high==1 &
+                                           bw_men_change$high_to_low==1) |
+                                            (bw_men_change$high_to_non==1 &
+                                               bw_men_change$nomt_to_high==1) |
+                                            (bw_men_change$low_to_high==1 &
+                                               bw_men_change$high_to_nomt ==1) ), ]  
+
+#model low to high for men on employment status
+bw_low_to_high_men <- bife(work_bi ~ low_to_high + age + age_sq +  
+                               partneroutside  + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_low_to_high_men, "logit")
+bw_low_to_high_men <- bias_corr(bw_low_to_high_men) #bias correction
+bw_low_to_high_men <- get_APEs(bw_low_to_high_men)
+summary(bw_low_to_high_men)
+
+#HIGH TO LOW
+#subset for women
+sub_bw_high_to_low_wom <- bw_wom_change[!((bw_wom_change$high_to_low==1 &
+                                             bw_wom_change$low_to_high==1) |
+                                            (bw_wom_change$high_to_low==1 &
+                                               bw_wom_change$low_to_non==1) |
+                                            (bw_wom_change$high_to_low==1 &
+                                               bw_wom_change$low_to_nomt ==1) ), ]  
+
+#model high to low for women on employment status
+bw_high_to_low_wom <- bife(work_bi ~ high_to_low + age + age_sq +  
+                               partneroutside  + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_high_to_low_wom, "logit")
+bw_high_to_low_wom <- bias_corr(bw_high_to_low_wom) #bias correction
+bw_high_to_low_wom <- get_APEs(bw_high_to_low_wom)
+summary(bw_high_to_low_wom)
+
+#subset for men
+sub_bw_high_to_low_men <- bw_men_change[!((bw_men_change$high_to_low==1 &
+                                             bw_men_change$low_to_high==1) |
+                                            (bw_men_change$high_to_low==1 &
+                                               bw_men_change$low_to_non==1) |
+                                            (bw_men_change$high_to_low==1 &
+                                               bw_men_change$low_to_nomt ==1) ), ]  
+
+#model high to low for men on employment status - did not converge
+#bw_high_to_low_men <- bife(work_bi ~ high_to_low + age + age_sq +  
+                              # partneroutside + partnerihh  + partner_missing +
+                             #  nochild + childu15| id, 
+                           #  sub_bw_high_to_low_men, "logit")
+#bw_high_to_low_men <- bias_corr(bw_high_to_low_men) #bias correction
+#bw_high_to_low_men <- get_APEs(bw_high_to_low_men)
+#summary(bw_high_to_low_men)
+
+#NON TO HIGH
+#subset for women
+sub_bw_non_to_high_wom <- bw_wom_change[!((bw_wom_change$non_to_high==1 &
+                                             bw_wom_change$high_to_non==1) |
+                                            (bw_wom_change$non_to_high==1 &
+                                               bw_wom_change$high_to_low==1) |
+                                            (bw_wom_change$non_to_high==1 &
+                                               bw_wom_change$high_to_nomt ==1) ), ]  
+#model non to high for women on employment status
+bw_non_to_high_wom <- bife(work_bi ~ non_to_high + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_non_to_high_wom, "logit")
+bw_non_to_high_wom <- bias_corr(bw_non_to_high_wom) #bias correction
+bw_non_to_high_wom <- get_APEs(bw_non_to_high_wom)
+summary(bw_non_to_high_wom)
+
+#subset for men
+sub_bw_non_to_high_men <- bw_men_change[!((bw_men_change$non_to_high==1 &
+                                             bw_men_change$high_to_non==1) |
+                                            (bw_men_change$non_to_high==1 &
+                                               bw_men_change$high_to_low==1) |
+                                            (bw_men_change$non_to_high==1 &
+                                               bw_men_change$high_to_nomt ==1) ), ]  
+
+#model non to high for men on employment status
+bw_non_to_high_men <- bife(work_bi ~ non_to_high + age + age_sq +  
+                               partneroutside  + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_non_to_high_men, "logit")
+bw_non_to_high_men <- bias_corr(bw_non_to_high_men) #bias correction
+bw_non_to_high_men <- get_APEs(bw_non_to_high_men)
+summary(bw_non_to_high_men)
+#NOMT TO HIGH
+#subset for women
+sub_bw_nomt_to_high_wom <- bw_wom_change[!((bw_wom_change$nomt_to_high==1 &
+                                              bw_wom_change$high_to_non==1) |
+                                             (bw_wom_change$nomt_to_high==1 &
+                                                bw_wom_change$high_to_low==1) |
+                                             (bw_wom_change$nomt_to_high==1 &
+                                                bw_wom_change$high_to_nomt ==1) ),
+                                         ]  
+
+#model nomt to high for women on employment status
+bw_nomt_to_high_wom <- bife(work_bi ~ nomt_to_high + age + age_sq +  
+                                partneroutside + partnerihh  + partner_missing +
+                                nochild + childu15| id, 
+                              sub_bw_nomt_to_high_wom, "logit")
+bw_nomt_to_high_wom <- bias_corr(bw_nomt_to_high_wom) #bias correction
+bw_nomt_to_high_wom <- get_APEs(bw_nomt_to_high_wom)
+summary(bw_nomt_to_high_wom)
+
+#subset for men
+sub_bw_nomt_to_high_men <- bw_men_change[!((bw_men_change$nomt_to_high==1 &
+                                              bw_men_change$high_to_non==1) |
+                                             (bw_men_change$nomt_to_high==1 &
+                                                bw_men_change$high_to_low==1) |
+                                             (bw_men_change$nomt_to_high==1 &
+                                                bw_men_change$high_to_nomt ==1) ),
+                                         ]  
+
+##model nomt to high for men on employment status
+bw_nomt_to_high_men <- bife(work_bi ~ nomt_to_high + age + age_sq +  
+                                partneroutside + partnerihh  + partner_missing +
+                                nochild + childu15| id, 
+                              sub_bw_nomt_to_high_men, "logit")
+bw_nomt_to_high_men <- bias_corr(bw_nomt_to_high_men) #bias correction
+bw_nomt_to_high_men <- get_APEs(bw_nomt_to_high_men)
+summary(bw_nomt_to_high_men)
+
+#HIGH TO NON
+#subset for women
+sub_bw_high_to_non_wom <- bw_wom_change[!((bw_wom_change$high_to_non==1 &
+                                             bw_wom_change$non_to_low==1) |
+                                            (bw_wom_change$high_to_non==1 &
+                                               bw_wom_change$non_to_high==1) |
+                                            (bw_wom_change$high_to_non==1 &
+                                               bw_wom_change$non_to_nomt ==1) ), ]  
+
+#model high to non for women on employment status
+bw_high_to_non_wom <- bife(work_bi ~ high_to_non + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_high_to_non_wom, "logit")
+bw_high_to_non_wom <- bias_corr(bw_high_to_non_wom) #bias correction
+bw_high_to_non_wom <- get_APEs(bw_high_to_non_wom)
+summary(bw_high_to_non_wom)
+
+#subset for men
+sub_bw_high_to_non_men <- bw_men_change[!((bw_men_change$high_to_non==1 &
+                                             bw_men_change$non_to_low==1) |
+                                            (bw_men_change$high_to_non==1 &
+                                               bw_men_change$non_to_high==1) |
+                                            (bw_men_change$high_to_non==1 &
+                                               bw_men_change$non_to_nomt ==1) ), ]  
+
+#model high to non for men on employment status
+bw_high_to_non_men <- bife(work_bi ~ high_to_non + age + age_sq +  
+                               partneroutside + partnerihh  + partner_missing +
+                               nochild + childu15| id, 
+                             sub_bw_high_to_non_men, "logit")
+bw_high_to_non_men <- bias_corr(bw_high_to_non_men) #bias correction
+bw_high_to_non_men <- get_APEs(bw_high_to_non_men)
+summary(bw_high_to_non_men)
+
+#HIGH TO NOMT
+#subset for women
+sub_bw_high_to_nomt_wom <- bw_wom_change[!((bw_wom_change$high_to_nomt==1 &
+                                              bw_wom_change$nomt_to_low==1) |
+                                             (bw_wom_change$high_to_nomt==1 &
+                                                bw_wom_change$nomt_to_high==1) 
+                                           | (bw_wom_change$high_to_nomt==1 &
+                                                bw_wom_change$nomt_to_non ==1) ), ]  
+
+#model high to nomt for women on employment status
+bw_high_to_nomt_wom <- bife(work_bi ~ high_to_nomt + age + age_sq +  
+                                partneroutside + partnerihh  + partner_missing +
+                                nochild + childu15| id, 
+                              sub_bw_high_to_nomt_wom, "logit")
+bw_high_to_nomt_wom <- bias_corr(bw_high_to_nomt_wom) #bias correction
+bw_high_to_nomt_wom <- get_APEs(bw_high_to_nomt_wom)
+summary(bw_high_to_nomt_wom)
+
+#subset for men
+sub_bw_high_to_nomt_men <- bw_men_change[!((bw_men_change$high_to_nomt==1 &
+                                              bw_men_change$nomt_to_low==1) |
+                                             (bw_men_change$high_to_nomt==1 &
+                                                bw_men_change$nomt_to_high==1) |
+                                             (bw_men_change$high_to_nomt==1 &
+                                                bw_men_change$nomt_to_non ==1) ), ]  
+
+#model high to nomt for men on employment status - did not converge
+#bw_high_to_nomt_men <- bife(work_bi ~ high_to_nomt + age + age_sq + 
+                              #  partneroutside + partnerihh  + partner_missing +
+                            #    nochild + childu15| id, 
+                            #  sub_bw_high_to_nomt_men, "logit")
+#bw_high_to_nomt_men <- bias_corr(bw_high_to_nomt_men) #bias correction
+#bw_high_to_nomt_men <- get_APEs(bw_high_to_nomt_men)
+#summary(bw_high_to_nomt_men)
+
+```
+
+#Exact changes caregiving on working hours
+```{r}
+load("working_hours_data_for_comparison.dta")
+#subset for women
+wh_wom_change <- subset(wh_com, wh_com$sex == 1) # 1 is women
+#subset for men
+wh_men_change <- subset(wh_com, wh_com$sex == 0) # 1 is women
+
+#NON TO INTENSE
+#subset for women
+sub_non_to_intense_wom <- wh_wom_change[!((wh_wom_change$non_to_intense==1 &
+                                             wh_wom_change$intense_to_care==1) |
+                                            (wh_wom_change$non_to_intense==1 &
+                                               wh_wom_change$intense_to_non==1)), ]  
+
+#model non to intense for women on working hours
+wh_non_to_intense_wom <- plm(con_wo_ho ~ non_to_intense + age + age_sq +
+                               partneroutside + partnerihh + partner_missing +
+                               nochild + childu15  ,
+                             data = sub_non_to_intense_wom,
+                             index = c("id", "wave"),
+                             model = "within")
+summary(wh_non_to_intense_wom)
+
+#subset for men
+sub_non_to_intense_men <- wh_men_change[!((wh_men_change$non_to_intense==1 &
+                                             wh_men_change$intense_to_care==1) |
+                                            (wh_men_change$non_to_intense==1 &
+                                               wh_men_change$intense_to_non==1)), ]  
+
+#model non to intense for men on working hours
+wh_non_to_intense_men <- plm(con_wo_ho ~ non_to_intense + age + age_sq +
+                               partneroutside + partnerihh + partner_missing +
+                               nochild + childu15  ,
+                             data = sub_non_to_intense_men,
+                             index = c("id", "wave"),
+                             model = "within")
+summary(wh_non_to_intense_men)
+
+
+#NON TO CARE
+#subset for women
+sub_non_to_care_wom <- wh_wom_change[!((wh_wom_change$non_to_care==1 &
+                                          wh_wom_change$care_to_intense==1) |
+                                         (wh_wom_change$non_to_care==1 &
+                                            wh_wom_change$care_to_non==1)), ]
+
+#model non to care for women on working hours
+wh_non_to_care_wom <- plm(con_wo_ho ~ non_to_care + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_non_to_care_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_non_to_care_wom)
+
+
+#subset for men
+sub_non_to_care_men <- wh_men_change[!((wh_men_change$non_to_care==1 &
+                                          wh_men_change$care_to_intense==1) |
+                                         (wh_men_change$non_to_care==1 &
+                                            wh_men_change$care_to_non==1)), ]
+
+#model non to care for men on working hours
+wh_non_to_care_men <- plm(con_wo_ho ~ non_to_care + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_non_to_care_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_non_to_care_men)
+
+
+#CARE TO INTENSE
+#subset for women
+sub_care_to_intense_wom <- wh_wom_change[!((wh_wom_change$care_to_intense==1 &
+                                              wh_wom_change$intense_to_non==1) |
+                                             (wh_wom_change$care_to_intense==1 &
+                                                wh_wom_change$intense_to_care==1)),
+                                         ]  
+
+#model care to intense for women on working hours
+wh_care_to_intense_wom <- plm(con_wo_ho ~ care_to_intense + age + age_sq +
+                                partneroutside + partnerihh + partner_missing +
+                                nochild + childu15  ,
+                              data = sub_care_to_intense_wom,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(wh_care_to_intense_wom)
+
+#subset for men
+sub_care_to_intense_men <- wh_men_change[!((wh_men_change$care_to_intense==1 &
+                                              wh_men_change$intense_to_non==1) |
+                                             (wh_men_change$care_to_intense==1 &
+                                                wh_men_change$intense_to_care==1)),
+                                         ]  
+
+#model care to intense for men on working hours
+wh_care_to_intense_men <- plm(con_wo_ho ~ care_to_intense + age + age_sq +
+                                partneroutside + partnerihh + partner_missing +
+                                nochild + childu15  ,
+                              data = sub_care_to_intense_men,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(wh_care_to_intense_men)
+
+#CARE TO NON
+#subset for women
+sub_care_to_non_wom <- wh_wom_change[!((wh_wom_change$care_to_non==1 &
+                                          wh_wom_change$non_to_care==1) |
+                                         (wh_wom_change$care_to_non==1 &
+                                            wh_wom_change$non_to_intense==1)), ]  
+
+#model care to non for women on working hours
+wh_care_to_non_wom <- plm(con_wo_ho ~ care_to_non + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_care_to_non_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+
+summary(wh_care_to_non_wom)
+
+#subset for men
+sub_care_to_non_men <- wh_men_change[!((wh_men_change$care_to_non==1 &
+                                          wh_men_change$non_to_care==1) |
+                                         (wh_men_change$care_to_non==1 &
+                                            wh_men_change$non_to_intense==1)), ]  
+
+#model care to non for men on working hours
+wh_care_to_non_men <- plm(con_wo_ho ~ care_to_non + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_care_to_non_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_care_to_non_men)
+
+#INTENSIVE TO NON
+#subset for women
+sub_intense_to_non_wom <- wh_wom_change[!((wh_wom_change$intense_to_non==1 &
+                                             wh_wom_change$non_to_care==1) |
+                                            (wh_wom_change$intense_to_non==1 &
+                                               wh_wom_change$non_to_intense==1)), ]  
+
+#model intensive to non for women on working hours
+wh_intense_to_non_wom <- plm(con_wo_ho ~ intense_to_non + age + age_sq +
+                               partneroutside + partnerihh + partner_missing +
+                               nochild + childu15  ,
+                             data = sub_intense_to_non_wom,
+                             index = c("id", "wave"),
+                             model = "within")
+summary(wh_intense_to_non_wom)
+
+#subset for men
+sub_intense_to_non_men <- wh_men_change[!((wh_men_change$intense_to_non==1 &
+                                             wh_men_change$non_to_care==1) |
+                                            (wh_men_change$intense_to_non==1 &
+                                               wh_men_change$non_to_intense==1)), ]  
+#model intensive to non for men on working hours
+wh_intense_to_non_men <- plm(con_wo_ho ~ intense_to_non + age + age_sq +
+                               partneroutside + partnerihh + partner_missing +
+                               nochild + childu15  ,
+                             data = sub_intense_to_non_men,
+                             index = c("id", "wave"),
+                             model = "within")
+summary(wh_intense_to_non_men)
+
+#INTENSIVE TO CARE
+#subset for women
+sub_intense_to_care_wom <- wh_wom_change[!((wh_wom_change$intense_to_care==1 &
+                                              wh_wom_change$care_to_intense==1) |
+                                             (wh_wom_change$intense_to_care==1 &
+                                                wh_wom_change$care_to_non==1)), ]
+
+#model intensive to care for women on working hours
+wh_intense_to_care_wom <- plm(con_wo_ho ~ intense_to_care + age + age_sq +
+                                partneroutside + partnerihh + partner_missing + 
+                                nochild + childu15  ,
+                              data = sub_intense_to_care_wom,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(wh_intense_to_care_wom)
+
+#subset for men
+sub_intense_to_care_men <- wh_men_change[!((wh_men_change$intense_to_care==1 &
+                                              wh_men_change$care_to_intense==1) |
+                                             (wh_men_change$intense_to_care==1 &
+                                                wh_men_change$care_to_non==1)), ]
+
+#model intensive to care for men on working hours
+wh_intense_to_care_men <- plm(con_wo_ho ~ intense_to_care + age + age_sq +
+                                partneroutside + partnerihh + partner_missing +
+                                nochild + childu15  ,
+                              data = sub_intense_to_care_men,
+                              index = c("id", "wave"),
+                              model = "within")
+summary(wh_intense_to_care_men)
+```
+
+#Exact changes monetary transfers on working hours - Table A3 continued
+```{r}
+load("working_hours_data_for_comparison.dta")
+#subset for women
+wh_wom_change <- subset(wh_com, wh_com$sex == 1) # 1 is women
+#subset for men
+wh_men_change <- subset(wh_com, wh_com$sex == 0) # 1 is women
+
+#NON TO LOW
+#subset for women
+sub_wh_non_to_low_wom <- wh_wom_change[!((wh_wom_change$non_to_low==1 &
+                                            wh_wom_change$low_to_non==1) |
+                                           (wh_wom_change$non_to_low==1 &
+                                              wh_wom_change$low_to_high==1) |
+                                           (wh_wom_change$non_to_low==1 &                                                        wh_wom_change$low_to_nomt ==1) ), ]  
+
+#model non to low for women on working hours
+wh_non_to_low_wom <- plm(con_wo_ho ~ non_to_low + age + age_sq +
+                           partneroutside + partnerihh + partner_missing + 
+                           nochild + childu15  ,
+                         data = sub_wh_non_to_low_wom,
+                         index = c("id", "wave"),
+                         model = "within")
+summary(wh_non_to_low_wom)
+
+#subset for men
+sub_wh_non_to_low_men <- wh_men_change[!((wh_men_change$non_to_low==1 &
+                                            wh_men_change$low_to_non==1) |
+                                           (wh_men_change$non_to_low==1 &
+                                              wh_men_change$low_to_high==1) |
+                                           (wh_men_change$non_to_low==1 &
+                                              wh_men_change$low_to_nomt ==1) ), ]  
+
+#model non to low for men on working hours
+wh_non_to_low_men <- plm(con_wo_ho ~ non_to_low + age + age_sq +
+                           partneroutside + partnerihh + partner_missing + 
+                           nochild + childu15  ,
+                         data = sub_wh_non_to_low_men,
+                         index = c("id", "wave"),
+                         model = "within")
+summary(wh_non_to_low_men)
+
+#NOMT to LOW
+#subset for women
+sub_wh_nomt_to_low_wom <- wh_wom_change[!((wh_wom_change$nomt_to_low==1 &
+                                             wh_wom_change$low_to_non==1) |
+                                            (wh_wom_change$nomt_to_low==1 &
+                                               wh_wom_change$low_to_high==1) |
+                                            (wh_wom_change$nomt_to_low==1 &
+                                               wh_wom_change$low_to_nomt ==1) ), ]  
+
+#model nomt to low for women on working hours
+wh_nomt_to_low_wom <- plm(con_wo_ho ~ nomt_to_low + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_nomt_to_low_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_nomt_to_low_wom)
+
+#subset for men
+sub_wh_nomt_to_low_men <- wh_men_change[!((wh_men_change$nomt_to_low==1 &
+                                             wh_men_change$low_to_non==1) |
+                                            (wh_men_change$nomt_to_low==1 &
+                                               wh_men_change$low_to_high==1) |
+                                            (wh_men_change$nomt_to_low==1 &
+                                               wh_men_change$low_to_nomt ==1) ), ]  
+
+#model nomt to low for men on working hours
+wh_nomt_to_low_men <- plm(con_wo_ho ~ nomt_to_low + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_nomt_to_low_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_nomt_to_low_men)
+
+#LOW TO NON
+#subset for women
+sub_wh_low_to_non_wom <- wh_wom_change[!((wh_wom_change$low_to_non==1 &
+                                            wh_wom_change$non_to_low==1) |
+                                           (wh_wom_change$low_to_non==1 &
+                                              wh_wom_change$non_to_high==1) |
+                                           (wh_wom_change$low_to_non==1 &
+                                              wh_wom_change$non_to_nomt ==1) ), ]  
+
+#model low to non for women on working hours
+wh_low_to_non_wom <- plm(con_wo_ho ~ low_to_non + age + age_sq +
+                           partneroutside + partnerihh + partner_missing + 
+                           nochild + childu15  ,
+                         data = sub_wh_low_to_non_wom,
+                         index = c("id", "wave"),
+                         model = "within")
+summary(wh_low_to_non_wom)
+
+#subset for men
+sub_wh_low_to_non_men <- wh_men_change[!((wh_men_change$low_to_non==1 &
+                                            wh_men_change$non_to_low==1) |
+                                           (wh_men_change$low_to_non==1 &
+                                              wh_men_change$non_to_high==1) |
+                                           (wh_men_change$low_to_non==1 &
+                                              wh_men_change$non_to_nomt ==1) ), ]  
+
+#model low to non for men on working hours
+wh_low_to_non_men <- plm(con_wo_ho ~ low_to_non + age + age_sq +
+                           partneroutside + partnerihh + partner_missing + 
+                           nochild + childu15  ,
+                         data = sub_wh_low_to_non_men,
+                         index = c("id", "wave"),
+                         model = "within")
+summary(wh_low_to_non_men)
+
+#LOW TO NOMT
+#subset for women
+sub_wh_low_to_nomt_wom <- wh_wom_change[!((wh_wom_change$low_to_nomt==1 &
+                                             wh_wom_change$nomt_to_low==1) |
+                                            (wh_wom_change$low_to_nomt==1 &
+                                               wh_wom_change$nomt_to_high==1) |
+                                            (wh_wom_change$low_to_nomt==1 &
+                                               wh_wom_change$nomt_to_non ==1) ), ]  
+
+#model low to nomt for women on working hours
+wh_low_to_nomt_wom <- plm(con_wo_ho ~ low_to_nomt + age + age_sq +
+                            partneroutside + partnerihh + partner_missing +
+                            nochild + childu15  ,
+                          data = sub_wh_low_to_nomt_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_low_to_nomt_wom)
+
+#subset for men
+sub_wh_low_to_nomt_men <- wh_men_change[!((wh_men_change$low_to_nomt==1 &
+                                             wh_men_change$nomt_to_low==1) |
+                                            (wh_men_change$low_to_nomt==1 &
+                                               wh_men_change$nomt_to_high==1) |
+                                            (wh_men_change$low_to_nomt==1 &
+                                               wh_men_change$nomt_to_non ==1) ), ]  
+
+#model low to nomt for men on working hours
+wh_low_to_nomt_men <- plm(con_wo_ho ~ low_to_nomt + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_low_to_nomt_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_low_to_nomt_men)
+
+#LOW TO HIGH
+#subset for women
+sub_wh_low_to_high_wom <- wh_wom_change[!((wh_wom_change$low_to_high==1 &
+                                             wh_wom_change$high_to_low==1) 
+                                          | (wh_wom_change$high_to_non==1 &
+                                               wh_wom_change$nomt_to_high==1) |
+                                            (wh_wom_change$low_to_high==1 &
+                                               wh_wom_change$high_to_nomt ==1) ), ]  
+
+
+#model low to high for women on working hours
+wh_low_to_high_wom <- plm(con_wo_ho ~ low_to_high + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_low_to_high_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_low_to_high_wom)
+
+#subset for men
+sub_wh_low_to_high_men <- wh_men_change[!((wh_men_change$low_to_high==1 &
+                                             wh_men_change$high_to_low==1) |
+                                            (wh_men_change$high_to_non==1 &
+                                               wh_men_change$nomt_to_high==1) |
+                                            (wh_men_change$low_to_high==1 &
+                                               wh_men_change$high_to_nomt ==1) ), ]  
+
+#model low to high for men on working hours
+wh_low_to_high_men <- plm(con_wo_ho ~ low_to_high + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_low_to_high_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_low_to_high_men)
+
+#HIGH to LOW
+#subset for women
+sub_wh_high_to_low_wom <- wh_wom_change[!((wh_wom_change$high_to_low==1 &
+                                             wh_wom_change$low_to_high==1) |
+                                            (wh_wom_change$high_to_low==1 &
+                                               wh_wom_change$low_to_non==1) |
+                                            (wh_wom_change$high_to_low==1 &
+                                               wh_wom_change$low_to_nomt ==1) ), ]  
+
+#model high to low for women on working hours
+wh_high_to_low_wom <-plm(con_wo_ho ~ high_to_low + age + age_sq +
+                           partneroutside + partnerihh + partner_missing + 
+                           nochild + childu15  ,
+                         data = sub_wh_high_to_low_wom,
+                         index = c("id", "wave"),
+                         model = "within")
+summary(wh_high_to_low_wom)
+
+#subset for men
+sub_wh_high_to_low_men <- wh_men_change[!((wh_men_change$high_to_low==1 &
+                                             wh_men_change$low_to_high==1) |
+                                            (wh_men_change$high_to_low==1 &
+                                               wh_men_change$low_to_non==1) |
+                                            (wh_men_change$high_to_low==1 &
+                                               wh_men_change$low_to_nomt ==1) ), ]  
+
+#model high to low for men on working hours
+wh_high_to_low_men <- plm(con_wo_ho ~ high_to_low + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_high_to_low_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_high_to_low_men)
+
+
+#NON to HIGH
+#subset for women
+sub_wh_non_to_high_wom <- wh_wom_change[!((wh_wom_change$non_to_high==1 &
+                                             wh_wom_change$high_to_non==1) |
+                                            (wh_wom_change$non_to_high==1 &
+                                               wh_wom_change$high_to_low==1) |
+                                            (wh_wom_change$non_to_high==1 &
+                                               wh_wom_change$high_to_nomt ==1) ), ]  
+
+#model non to high for women on working hours
+wh_non_to_high_wom <- plm(con_wo_ho ~ non_to_high + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_non_to_high_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_non_to_high_wom)
+
+
+#subset for men
+sub_wh_non_to_high_men <- wh_men_change[!((wh_men_change$non_to_high==1 &
+                                             wh_men_change$high_to_non==1) |
+                                            (wh_men_change$non_to_high==1 &
+                                               wh_men_change$high_to_low==1) |
+                                            (wh_men_change$non_to_high==1 &
+                                               wh_men_change$high_to_nomt ==1) ), ]  
+
+#model non to high for men on working hours
+wh_non_to_high_men <- plm(con_wo_ho ~ non_to_high + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_non_to_high_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_non_to_high_men)
+
+#NOMT TO HIGH
+#subset for women
+sub_wh_nomt_to_high_wom <- wh_wom_change[!((wh_wom_change$nomt_to_high==1 &
+                                              wh_wom_change$high_to_non==1) |
+                                             (wh_wom_change$nomt_to_high==1 &
+                                                wh_wom_change$high_to_low==1) |
+                                             (wh_wom_change$nomt_to_high==1 &
+                                                wh_wom_change$high_to_nomt ==1) ),
+                                         ]  
+
+#model nomt to high for women on working hours
+wh_nomt_to_high_wom <- plm(con_wo_ho ~ nomt_to_high + age + age_sq +
+                             partneroutside + partnerihh + partner_missing +
+                             nochild + childu15  ,
+                           data = sub_wh_nomt_to_high_wom,
+                           index = c("id", "wave"),
+                           model = "within")
+summary(wh_nomt_to_high_wom)
+
+#subset for men
+sub_wh_nomt_to_high_men <- wh_men_change[!((wh_men_change$nomt_to_high==1 &
+                                              wh_men_change$high_to_non==1) |
+                                             (wh_men_change$nomt_to_high==1 &
+                                                wh_men_change$high_to_low==1) |
+                                             (wh_men_change$nomt_to_high==1 &
+                                                wh_men_change$high_to_nomt ==1) ),
+                                         ]  
+
+#model nomt to high for men on working hours
+wh_nomt_to_high_men <- plm(con_wo_ho ~ nomt_to_high + age + age_sq +
+                             partneroutside + partnerihh + partner_missing +
+                             nochild + childu15  ,
+                           data = sub_wh_nomt_to_high_men,
+                           index = c("id", "wave"),
+                           model = "within")
+summary(wh_nomt_to_high_men)
+
+#HIGH to NON
+#subset for women
+sub_wh_high_to_non_wom <- wh_wom_change[!((wh_wom_change$high_to_non==1 &
+                                             wh_wom_change$non_to_low==1) |
+                                            (wh_wom_change$high_to_non==1 &
+                                               wh_wom_change$non_to_high==1) |
+                                            (wh_wom_change$high_to_non==1 &
+                                               wh_wom_change$non_to_nomt ==1) ), ]  
+
+#model high to non for women on working hours
+wh_high_to_non_wom <- plm(con_wo_ho ~ high_to_non + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_high_to_non_wom,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_high_to_non_wom)
+
+#subset for men
+sub_wh_high_to_non_men <- wh_men_change[!((wh_men_change$high_to_non==1 &
+                                             wh_men_change$non_to_low==1) |
+                                            (wh_men_change$high_to_non==1 &
+                                               wh_men_change$non_to_high==1) |
+                                            (wh_men_change$high_to_non==1 &
+                                               wh_men_change$non_to_nomt ==1) ), ]  
+
+#model high to non for men on working hours
+wh_high_to_non_men <- plm(con_wo_ho ~ high_to_non + age + age_sq +
+                            partneroutside + partnerihh + partner_missing + 
+                            nochild + childu15  ,
+                          data = sub_wh_high_to_non_men,
+                          index = c("id", "wave"),
+                          model = "within")
+summary(wh_high_to_non_men)
+
+#HIGH to NOMT
+#subset for women
+sub_wh_high_to_nomt_wom <- wh_wom_change[!((wh_wom_change$high_to_nomt==1 &
+                                              wh_wom_change$nomt_to_low==1) |
+                                             (wh_wom_change$high_to_nomt==1 &
+                                                wh_wom_change$nomt_to_high==1) |
+                                             (wh_wom_change$high_to_nomt==1 &
+                                                wh_wom_change$nomt_to_non ==1) ), ]  
+
+#model high to nomt for women on working hours
+wh_high_to_nomt_wom <- plm(con_wo_ho ~ high_to_nomt + age + age_sq +
+                             partneroutside + partnerihh + partner_missing +
+                             nochild + childu15  ,
+                           data = sub_wh_high_to_nomt_wom,
+                           index = c("id", "wave"),
+                           model = "within")
+summary(wh_high_to_nomt_wom)
+
+#subset for men
+sub_wh_high_to_nomt_men <- wh_men_change[!((wh_men_change$high_to_nomt==1 &
+                                              wh_men_change$nomt_to_low==1) |
+                                             (wh_men_change$high_to_nomt==1 &
+                                                wh_men_change$nomt_to_high==1) |
+                                             (wh_men_change$high_to_nomt==1 &
+                                                wh_men_change$nomt_to_non ==1) ), ]  
+
+#model high to nomt for men on working hours
+wh_high_to_nomt_men <- plm(con_wo_ho ~ high_to_nomt + age + age_sq +
+                             partneroutside + partnerihh + partner_missing +
+                             nochild + childu15 ,
+                           data = sub_wh_high_to_nomt_men,
+                           index = c("id", "wave"),
+                           model = "within")
+summary(wh_high_to_nomt_men)
+```
+
+
